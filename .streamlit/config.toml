@@ -1,0 +1,12 @@
+# Thema voor Sjef — warme, foodie-uitstraling i.p.v. standaard-grijs.
+[theme]
+base = "light"
+primaryColor = "#2E7D4F"            # vers groen (knoppen, accenten)
+backgroundColor = "#FBF7F0"         # warme crème
+secondaryBackgroundColor = "#FFFFFF" # kaarten/sidebar
+textColor = "#22312A"               # diep groen-zwart
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = true

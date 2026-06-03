@@ -1,0 +1,45 @@
+# ============================================================
+#  profiles.example.yaml — SJABLOON (mag de repo in, geen privé-data)
+#
+#  Kopieer naar profiles.yaml en vul je eigen gegevens in, OF gebruik
+#  /setup in Telegram zodat de bot je er doorheen leidt en het opslaat.
+#  profiles.yaml is git-ignored en wordt dus NIET gedeeld.
+#
+#  De agent berekent uit deze gegevens automatisch per persoon de dagelijkse
+#  calorie- en macrodoelen (geen handmatig rekenwerk nodig).
+# ============================================================
+
+household:
+  days: 7              # voor hoeveel dagen de boodschappen moeten zijn
+  shared_meals: true   # true = zelfde gerechten, andere porties per persoon
+  notes: ""            # huishoud-brede aandachtspunten voor de planner
+
+persons:
+  - name: Persoon A
+    actief: true        # false = telt tijdelijk NIET mee in plan/macro's/boodschappen
+    sex: man            # man | vrouw
+    age: 30
+    height_cm: 180
+    weight_kg: 80
+    bodyfat_pct: 18     # optioneel; laat weg of null als onbekend
+    goal: cut           # cut | onderhoud | bulk
+    activity: matig     # zittend | licht | matig | actief | zeer_actief
+    training: "fitness 3-4x per week"
+    diet_profile: omnivoor   # omnivoor | vegetarisch | pescotarisch | veganistisch
+    exclude: []         # nooit in het menu, bv. ["lactose", "kokos"]
+    prefer: [kip, eieren, kwark]
+    notes: ""           # bijzonderheden, bv. "insulineresistent"
+
+  - name: Persoon B
+    sex: vrouw
+    age: 28
+    height_cm: 170
+    weight_kg: 65
+    bodyfat_pct: null
+    goal: bulk
+    activity: licht
+    training: "fitness 2x per week"
+    diet_profile: omnivoor
+    exclude: []
+    prefer: [griekse yoghurt, havermout]
+    notes: ""

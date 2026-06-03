@@ -1,0 +1,49 @@
+# ============================================================
+#  config.example.yaml — SJABLOON (mag de repo in, geen privé-data)
+#
+#  Kopieer naar config.yaml en pas aan. config.yaml is git-ignored.
+#  Persoonlijke profielen (personen/macro's) staan in profiles.yaml
+#  (zie profiles.example.yaml) of stel ze in via het dashboard / /setup.
+# ============================================================
+
+household:
+  people: 1
+  days: 7
+
+diet:
+  profile: omnivoor          # omnivoor | vegetarisch | pescotarisch | veganistisch
+  exclude: []                # nooit bestellen, bv. ["lactose"]
+  prefer: [kip, eieren, havermout, griekse yoghurt, rijst]
+
+# Legacy single-mode macro's (gebruikt als er GEEN profiles.yaml is).
+macro_modes:
+  cut:        {kcal_per_day: 2000, protein_per_day: 180}
+  onderhoud:  {kcal_per_day: 2500, protein_per_day: 160}
+  bulk:       {kcal_per_day: 3000, protein_per_day: 200}
+
+weekly:
+  default_mode: onderhoud
+  staples:                   # gaan elke week sowieso mee (zoekterm: aantal)
+    havermout: 1
+    eieren: 1
+    melk: 1
+  auto:
+    enabled: false           # autonome wekelijkse run via Telegram-bot
+    weekday: 5               # 0=ma ... 6=zo
+    time: "09:00"
+    mode: onderhoud
+    request: ""
+
+limits:
+  max_order_eur: 150         # harde bovengrens; budget-trim snoeit hieronder
+  max_item_eur: 25           # sanity-check tegen verkeerde, dure matches
+
+budget:
+  target_eur: 130            # streefbedrag dat de planner meekrijgt
+  cost_conscious: true       # eiwit ook uit goedkope bronnen (kwark/ei/peulvr.)
+
+picnic:
+  preferred_weekday: null
+
+safety:
+  dry_run: true              # ALTIJD true als default — bestelt niets echt

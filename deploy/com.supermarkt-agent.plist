@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd LaunchAgent voor de supermarkt-agent bot.
+
+  Gedrag:
+    * Start automatisch bij inloggen (RunAtLoad).
+    * Herstart automatisch na een crash (KeepAlive).
+    * Wacht 30s voor een herstart om restart-storms te voorkomen (ThrottleInterval).
+    * Wordt als achtergrondproces behandeld door macOS (ProcessType).
+
+  Installatie (eenmalig):
+    cp deploy/com.supermarkt-agent.plist ~/Library/LaunchAgents/
+    launchctl load -w ~/Library/LaunchAgents/com.supermarkt-agent.plist
+
+  Stoppen / herladen:
+    launchctl unload ~/Library/LaunchAgents/com.supermarkt-agent.plist
+    launchctl load ~/Library/LaunchAgents/com.supermarkt-agent.plist
+
+  Status checken:
+    launchctl list | grep supermarkt-agent
+    tail -f /PAD/NAAR/sjef/state/bot.out.log
+
+  Network/wake gedrag:
+    * Bij Mac-sleep blijft het proces leven; bij wake hervat python-telegram-bot
+      het long-polling automatisch zodra het netwerk weer beschikbaar is.
+    * Als er onverhoopt geen netwerk is bij start, faalt de eerste polling,
+      crasht de bot, en herstart launchd na 30s — totdat het netwerk er is.
+
+  Belangrijk: LaunchAgents draaien pas als je bent ingelogd op de Mac. Wil je
+  dat de bot ook draait zonder ingelogd te zijn (na herstart, vóór login), dan
+  moet je een LaunchDaemon in /Library/LaunchDaemons gebruiken (vereist sudo).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.supermarkt-agent</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/PAD/NAAR/sjef/.venv/bin/python</string>
+        <string>run.py</string>
+        <string>bot</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/PAD/NAAR/sjef</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Minimaal 30s tussen herstarts: voorkomt hot restart loops bij
+         tijdelijke fouten (geen netwerk, Picnic-API down, etc.). -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/PAD/NAAR/sjef/state/bot.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/PAD/NAAR/sjef/state/bot.err.log</string>
+</dict>
+</plist>
