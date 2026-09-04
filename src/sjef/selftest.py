@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import yaml
+
 from sjef.config import ROOT
 
 
@@ -20,7 +22,11 @@ def run_selftest() -> int:
             failures += 1
 
     print("config.yaml laden + macro-modes:")
-    cfg = Config.load()
+    try:
+        cfg = Config.load()
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        print(f"  ❌ config.yaml laden mislukt: {exc}")
+        return 1
     check("default mode bestaat", cfg.default_mode in cfg.macro_modes)
     macros = cfg.macros_for("bulk")
     check(

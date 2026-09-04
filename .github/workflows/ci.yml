@@ -45,4 +45,6 @@ jobs:
         run: uv run --no-sync pytest
 
       - name: Run offline selftests
-        run: uv run --no-sync sjef selftest
+        run: |
+          cp config.example.yaml config.yaml
+          uv run --no-sync sjef selftest
