@@ -14,16 +14,18 @@ Daarom: lees pas NÁ de kop 'Per 100 g', neem per voedingsstof de eerste passend
 waarde in de paar regels erna (de kcal-waarde staat een paar regels verder).
 Verse producten (groente/fruit) hebben vaak geen tabel → lege dict.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import re
-from pathlib import Path
+
+from sjef.config import ROOT
 
 log = logging.getLogger(__name__)
 
-_CACHE_FILE = Path(__file__).resolve().parent.parent / "state" / "nutrition_cache.json"
+_CACHE_FILE = ROOT / "state" / "nutrition_cache.json"
 
 # exacte labels in de tabel -> sleutel in ons resultaat
 _LABELS = {
@@ -78,7 +80,11 @@ def parse_nutrition(raw_pdp) -> dict:
                         out["kcal"] = v
                     break
             else:
-                if re.search(r"\d", cand) and "kcal" not in cand.lower() and re.search(r"g\b|g$", cand):
+                if (
+                    re.search(r"\d", cand)
+                    and "kcal" not in cand.lower()
+                    and re.search(r"g\b|g$", cand)
+                ):
                     v = _num(cand)
                     if v is not None and 0 <= v <= 100:
                         out[key] = v
@@ -121,4 +127,3 @@ def fetch_nutrition(picnic_api, article_id: str) -> dict:
     cache[article_id] = nutrition
     _save_cache(cache)
     return nutrition
-

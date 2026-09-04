@@ -9,18 +9,17 @@ VEILIGHEID: alle methodes die geld kosten of een order plaatsen controleren
 `dry_run`. In dry-run worden ze NIET uitgevoerd; ze loggen alleen wat ze zouden
 doen. Echt bestellen kan pas als dry_run=False én er expliciet is goedgekeurd.
 """
+
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 
 from python_picnic_api2 import PicnicAPI
-from python_picnic_api2.session import Picnic2FARequired
+
+from sjef.config import ROOT
 
 log = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parent.parent
 TOKEN_FILE = ROOT / "state" / "picnic_auth_token.txt"
 
 
@@ -54,7 +53,7 @@ class PicnicClient:
         if not (username and password):
             raise RuntimeError(
                 "Geen geldige Picnic-token en geen username/password. "
-                "Draai eerst: python -m src.login_setup"
+                "Draai eerst: uv run sjef picnic-login"
             )
         # NB: login() gooit Picnic2FARequired als 2FA aan staat. De interactieve
         # 2FA-stap zit in login_setup.py, niet hier, zodat de bot nooit om een
@@ -98,7 +97,9 @@ class PicnicClient:
 
     def add_product(self, product_id: str, count: int = 1) -> dict | None:
         if self.dry_run:
-            log.info("[DRY-RUN] add_product(%s, count=%s) overgeslagen", product_id, count)
+            log.info(
+                "[DRY-RUN] add_product(%s, count=%s) overgeslagen", product_id, count
+            )
             return None
         return self.api.add_product(product_id, count)
 
@@ -117,7 +118,10 @@ class PicnicClient:
         Niet in de library; rechtstreeks via /cart/checkout/order/{id}/confirm.
         """
         if self.dry_run:
-            log.info("[DRY-RUN] confirm_order(%s) overgeslagen — er wordt NIET besteld", order_id)
+            log.info(
+                "[DRY-RUN] confirm_order(%s) overgeslagen — er wordt NIET besteld",
+                order_id,
+            )
             return None
         return self.api._post(f"/cart/checkout/order/{order_id}/confirm")
 

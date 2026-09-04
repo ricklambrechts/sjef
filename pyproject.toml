@@ -1,0 +1,51 @@
+[project]
+name = "sjef"
+version = "0.1.0"
+description = "AI-keukenmaatje voor weekmenu's en Picnic-boodschappen"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "python-picnic-api2>=1.3.0",
+    "anthropic>=0.40.0",
+    "python-telegram-bot[job-queue]>=21.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "streamlit>=1.40",
+    "pandas>=2.0",
+]
+
+[project.scripts]
+sjef = "sjef.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff==0.16.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+# Practical rule set from https://docs.astral.sh/ruff/linter/#rule-selection
+select = [
+    "E",    # pycodestyle
+    "F",    # Pyflakes
+    "UP",   # Modern Python syntax
+    "B",    # Common bug patterns (flake8-bugbear)
+    "SIM",  # Simplifications
+    "I",    # Import sorting
+]
+# Let ruff format handle wrapping; long strings and URLs may remain longer.
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sjef"]

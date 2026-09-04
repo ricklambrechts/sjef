@@ -8,11 +8,13 @@ De maaltijd-totalen worden de SOM hiervan (vervangt Claude's schatting); dag-
 totalen worden de som van de maaltijden. Ingrediënten zonder voedingstabel
 (bv. vers fruit) houden None en de maaltijd valt voor dat deel terug op schatting.
 """
+
 from __future__ import annotations
 
 import logging
 
-from . import matcher, nutrition_lookup
+from sjef.picnic import nutrition_lookup
+from sjef.planning import matcher
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +69,9 @@ def _person_grams(ing: dict, persons: list[str]) -> dict[str, float]:
     return {p: share for p in persons}
 
 
-def enrich(plan: dict, picnic, max_item_eur: float, persons: list[str] | None = None) -> dict:
+def enrich(
+    plan: dict, picnic, max_item_eur: float, persons: list[str] | None = None
+) -> dict:
     """Verrijk het plan met echte macro's per ingrediënt en per persoon.
 
     Zet per ingrediënt: totale gram, bron_product, kcal/eiwit (totaal) en
@@ -115,8 +119,11 @@ def enrich(plan: dict, picnic, max_item_eur: float, persons: list[str] | None = 
                     ing["kcal"] = round(total_g / 100 * kpg)
                     ing["eiwit_g"] = round(total_g / 100 * epg, 1)
                     ing["per_persoon"] = {
-                        name: {"gram": round(g), "kcal": round(g / 100 * kpg),
-                               "eiwit_g": round(g / 100 * epg, 1)}
+                        name: {
+                            "gram": round(g),
+                            "kcal": round(g / 100 * kpg),
+                            "eiwit_g": round(g / 100 * epg, 1),
+                        }
                         for name, g in pg.items()
                     }
                     for name, g in pg.items():

@@ -9,6 +9,11 @@
     * Wordt als achtergrondproces behandeld door macOS (ProcessType).
 
   Installatie (eenmalig):
+    Vervang /PAD/NAAR/uv door het absolute pad uit: command -v uv
+    Vervang /PAD/NAAR/sjef overal door het absolute pad naar de projectmap.
+    Voer vanuit de projectmap eerst uit:
+    uv sync
+    mkdir -p state ~/Library/LaunchAgents
     cp deploy/com.supermarkt-agent.plist ~/Library/LaunchAgents/
     launchctl load -w ~/Library/LaunchAgents/com.supermarkt-agent.plist
 
@@ -37,8 +42,10 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/PAD/NAAR/sjef/.venv/bin/python</string>
-        <string>run.py</string>
+        <string>/PAD/NAAR/uv</string>
+        <string>run</string>
+        <string>--locked</string>
+        <string>sjef</string>
         <string>bot</string>
     </array>
 

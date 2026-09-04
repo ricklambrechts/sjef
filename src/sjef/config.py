@@ -1,4 +1,5 @@
 """Laadt configuratie (config.yaml) en geheimen (.env) in een typed object."""
+
 from __future__ import annotations
 
 import os
@@ -8,7 +9,7 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _as_bool(value: str | None, default: bool = False) -> bool:
@@ -32,7 +33,7 @@ class Secrets:
     dry_run: bool
 
     @classmethod
-    def load(cls) -> "Secrets":
+    def load(cls) -> Secrets:
         load_dotenv(ROOT / ".env")
         allowed = os.getenv("TELEGRAM_ALLOWED_USER_ID")
         return cls(
@@ -43,7 +44,9 @@ class Secrets:
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
             planner_model=os.getenv("PLANNER_MODEL", "claude-sonnet-4-6"),
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
-            telegram_allowed_user_id=int(allowed) if allowed and allowed.strip() else None,
+            telegram_allowed_user_id=int(allowed)
+            if allowed and allowed.strip()
+            else None,
             dry_run=_as_bool(os.getenv("DRY_RUN"), default=True),
         )
 
@@ -55,9 +58,9 @@ class Config:
     raw: dict = field(default_factory=dict)
 
     @classmethod
-    def load(cls, path: Path | None = None) -> "Config":
+    def load(cls, path: Path | None = None) -> Config:
         path = path or (ROOT / "config.yaml")
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             return cls(raw=yaml.safe_load(fh) or {})
 
     def save(self, path: Path | None = None) -> Path:

@@ -10,15 +10,16 @@ Formules:
   * Eiwit op basis van vetvrije massa indien bekend, anders lichaamsgewicht.
   * Vet ~0.9 g/kg; resterende calorieën -> koolhydraten.
 """
+
 from __future__ import annotations
 
 # Activiteitsfactoren (standaard Mifflin/Harris-Benedict-conventie).
 ACTIVITY_FACTORS = {
-    "zittend": 1.2,       # weinig beweging, bureauwerk
-    "licht": 1.375,       # 1-3x/week sport
-    "matig": 1.55,        # 3-5x/week sport
-    "actief": 1.725,      # 6-7x/week sport
-    "zeer_actief": 1.9,   # zwaar werk of 2x/dag trainen
+    "zittend": 1.2,  # weinig beweging, bureauwerk
+    "licht": 1.375,  # 1-3x/week sport
+    "matig": 1.55,  # 3-5x/week sport
+    "actief": 1.725,  # 6-7x/week sport
+    "zeer_actief": 1.9,  # zwaar werk of 2x/dag trainen
 }
 
 GOAL_KCAL_FACTOR = {"cut": 0.80, "onderhoud": 1.00, "bulk": 1.12}
@@ -73,7 +74,9 @@ def compute_targets(
     goal = (goal or "onderhoud").strip().lower()
     activity = (activity or "matig").strip().lower()
     if goal not in GOAL_KCAL_FACTOR:
-        raise ValueError(f"Onbekend doel '{goal}' (kies: {', '.join(GOAL_KCAL_FACTOR)})")
+        raise ValueError(
+            f"Onbekend doel '{goal}' (kies: {', '.join(GOAL_KCAL_FACTOR)})"
+        )
     if activity not in ACTIVITY_FACTORS:
         raise ValueError(
             f"Onbekend activiteitsniveau '{activity}' (kies: {', '.join(ACTIVITY_FACTORS)})"

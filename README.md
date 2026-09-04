@@ -38,11 +38,12 @@ Het maaltijdplan komt van de **Claude API**; de boodschappen lopen via de
 
 ## Setup
 
+Installeer eerst [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
 ```bash
 git clone https://github.com/groeimetai/sjef.git
 cd sjef
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+uv sync
 
 cp .env.example .env             # geheimen (zie tabel hieronder)
 cp config.example.yaml config.yaml   # voorkeuren & limieten
@@ -65,7 +66,7 @@ Wil je **alleen het dashboard**? Dan heb je de twee Telegram-velden niet nodig.
 
 ### Eenmalig inloggen bij Picnic (2FA)
 ```bash
-.venv/bin/python -m src.login_setup
+uv run sjef picnic-login
 ```
 Dit handelt de SMS-code af en slaat een auth-token op in `state/`, zodat je
 daarna zonder 2FA werkt.
@@ -79,11 +80,14 @@ Stel personen, macro-doelen, huishouden en budget in **via het dashboard**
 ## Gebruik
 
 ```bash
-.venv/bin/streamlit run dashboard.py     # ▶ web-dashboard (http://localhost:8501) — aanrader
-.venv/bin/python run.py selftest         # offline logica-tests (geen credentials nodig)
-.venv/bin/python run.py plan bulk        # voorstel in de terminal (bestelt niets)
-.venv/bin/python run.py bot              # Telegram-bot (optioneel)
+uv run sjef dashboard        # web-dashboard (http://localhost:8501)
+uv run sjef plan bulk        # voorstel in de terminal (bestelt niets)
+uv run sjef bot              # Telegram-bot (optioneel)
+uv run sjef selftest         # offline logica-tests (geen credentials nodig)
 ```
+
+Bekijk alle commando’s met `uv run sjef --help` en de opties per commando met
+bijvoorbeeld `uv run sjef picnic-login --help`.
 
 ### Web-dashboard
 De overzichtelijke voorkant om alles te zien, te bewerken en goed te keuren:
@@ -123,7 +127,7 @@ rekenen.
 De planner houdt per persoon rekening met de doelen, kookt waar mogelijk dezelfde
 gerechten met aangepaste porties, en past universele voedingsprincipes toe
 (eiwit eerst, volume eten, lage glycemische load bij insulineresistentie,
-koolhydraat-timing rond training). Die kennislaag staat in `src/nutrition.py`.
+koolhydraat-timing rond training). Die kennislaag staat in `src/sjef/household/nutrition.py`.
 
 ### Budget & kosten
 In `config.yaml` staan twee budget-mechanismen:
@@ -146,13 +150,10 @@ Zet in `config.yaml` onder `weekly.auto`: `enabled: true`, plus `weekday`,
 tijdstip zelf een voorstel en stuurt het naar je in Telegram — **je keurt altijd
 eerst goed; er wordt nooit automatisch besteld.**
 
-Dit vereist dat de bot draait. Houd hem in leven met de meegeleverde LaunchAgent:
-```bash
-cp deploy/com.supermarkt-agent.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.supermarkt-agent.plist
-```
-(De bot herstart dan na een crash en bij inloggen. Je Mac moet aan staan op het
-geplande tijdstip.)
+Dit vereist dat de bot draait. Op macOS kun je hiervoor de meegeleverde
+LaunchAgent gebruiken. De installatie- en beheerinstructies staan in
+[deploy/com.supermarkt-agent.plist](deploy/com.supermarkt-agent.plist).
+Je Mac moet op het geplande tijdstip wakker zijn en je moet ingelogd zijn.
 
 ### Betalen — hoe het echt werkt
 Picnic heeft **geen betaallink per bestelling**. Betaling loopt via het
@@ -166,20 +167,27 @@ geïtemiseerde lijst + totaalbedrag, zodat je precies weet wat er afgeschreven w
 ## Architectuur
 
 ```
-run.py                 entrypoint (bot | plan | selftest)
-src/
-  config.py            laadt config.yaml + .env
-  nutrition.py         universele TDEE/macro-berekening + voedingskennis (deelbaar)
-  profiles.py          laadt/bewaart profiles.yaml + berekent doelen per persoon
-  onboarding.py        pure vraag-engine voor /setup (Telegram-onafhankelijk)
-  login_setup.py       eenmalige interactieve Picnic-login (2FA)
-  picnic_client.py     wrapper rond python-picnic-api2 + set_delivery_slot/confirm
-  planner.py           Claude API -> weekmenu + boodschappenlijst (forced tool-use)
-  matcher.py           koppelt boodschappen aan Picnic-producten (pure heuristiek)
-  orchestrator.py      plan -> match -> voorstel  /  voorstel -> bestelling
-  formatting.py        plain-text opmaak (robuust tegen rare productnamen)
-  telegram_bot.py      bot + autorisatie + 2-staps goedkeuring + vrije opdrachten
-                       + wekelijkse auto-run (JobQueue)
+src/sjef/
+  cli.py               projectcommando’s
+  config.py            configuratie en secrets
+  selftest.py          offline controles van de pure logica
+  interfaces/
+    dashboard.py       Streamlit-dashboard
+    telegram_bot.py    Telegram-bot en wekelijkse planning
+    formatting.py      opmaak van menu’s en boodschappen
+  picnic/
+    picnic_client.py   Picnic-API en bestellen
+    login_setup.py     inloggen met 2FA
+    nutrition_lookup.py  voedingswaarden van Picnic-producten
+  planning/
+    planner.py         weekmenu genereren met Claude
+    matcher.py         boodschappen aan producten koppelen
+    orchestrator.py    voorstellen opbouwen en bestellingen uitvoeren
+    meal_macros.py     macro’s per maaltijd berekenen
+  household/
+    profiles.py        huishoudprofielen laden en bewaren
+    nutrition.py       voedingsdoelen en voedingskennis
+    onboarding.py      vragen voor het instellen van profielen
 deploy/
   com.supermarkt-agent.plist   launchd LaunchAgent die de bot draaiend houdt
 ```
@@ -191,13 +199,26 @@ deploy/
 
 ---
 
+## Ontwikkelen
+
+Installeer de dependencies en controleer je wijzigingen:
+
+```bash
+uv sync
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+uv run sjef selftest
+```
+
 ## Wat is getest
 
-- `run.py selftest` dekt de pure logica: config-laden, productkeuze-heuristiek,
+- CI draait de tests met pytest en de offline selftests op Python 3.11 t/m 3.14.
+- `uv run sjef selftest` dekt de pure logica: config-laden, productkeuze-heuristiek,
   plan-validatie, slot-parsing en opmaak — **zonder** netwerk of credentials.
 - De live-paden (Picnic-login/zoeken/bestellen, Claude-call, Telegram) vereisen
   je eigen accounts en zijn daarom niet automatisch getest. Begin met `DRY_RUN=true`
-  en `run.py plan` om het end-to-end te zien zonder te bestellen.
+  en `uv run sjef plan` om het end-to-end te zien zonder te bestellen.
 
 ## Bekend aandachtspunt
 Het exacte order-bevestig-endpoint (`/cart/checkout/order/{id}/confirm`) en waar

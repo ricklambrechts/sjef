@@ -7,6 +7,7 @@ we Markdown, met gesaneerde inhoud zodat het niet stuk kan).
 `proposal_messages()` levert een lijst berichten op die elk binnen Telegram's
 limiet passen, zodat ALLE producten worden getoond (niets afgekapt).
 """
+
 from __future__ import annotations
 
 TG_LIMIT = 3900  # veilig onder Telegram's 4096-tekenlimiet
@@ -31,10 +32,14 @@ def _overview_lines(proposal: dict) -> list[str]:
         lines.append("🍽️ WEEKMENU — huishouden")
         for p in persons:
             t = p["targets"]
-            lines.append(f"  • {p['name']} ({p['goal']}): ~{t['kcal']} kcal / {t['eiwit_g']}g eiwit")
+            lines.append(
+                f"  • {p['name']} ({p['goal']}): ~{t['kcal']} kcal / {t['eiwit_g']}g eiwit"
+            )
     else:
         lines.append(f"🍽️ WEEKMENU — modus: {proposal['mode']}")
-        lines.append(f"Doel: ~{macros['kcal_per_day']} kcal / {macros['protein_per_day']}g eiwit p.p.p.d.")
+        lines.append(
+            f"Doel: ~{macros['kcal_per_day']} kcal / {macros['protein_per_day']}g eiwit p.p.p.d."
+        )
     if proposal.get("request"):
         lines.append(f"Verzoek: {proposal['request']}")
     if plan.get("samenvatting"):
@@ -52,7 +57,7 @@ def _strip_type_prefix(naam, meal_type: str) -> str:
     'Snack Niels: kwark' onder type 'snack' -> 'Niels: kwark'."""
     s = str(naam or "").strip()
     if s.lower().startswith(meal_type.lower() + " "):
-        s = s[len(meal_type) + 1:].lstrip()
+        s = s[len(meal_type) + 1 :].lstrip()
     return s
 
 
@@ -66,8 +71,8 @@ def _menu_lines(proposal: dict) -> list[str]:
     for day in days:
         out.append("")
         out.append(
-            f"📅 {day.get('dag','?')} — samen ~{day.get('totaal_kcal','?')} kcal / "
-            f"{day.get('totaal_eiwit_g','?')}g eiwit"
+            f"📅 {day.get('dag', '?')} — samen ~{day.get('totaal_kcal', '?')} kcal / "
+            f"{day.get('totaal_eiwit_g', '?')}g eiwit"
         )
         meals = day.get("maaltijden", [])
         by_type: dict[str, list[dict]] = {}
@@ -86,13 +91,15 @@ def _menu_lines(proposal: dict) -> list[str]:
                 macros = []
                 for i, g in enumerate(group):
                     who = f"{persons[i]} " if i < len(persons) else ""
-                    macros.append(f"{who}{g.get('kcal','?')}/{g.get('eiwit_g','?')}g")
+                    macros.append(f"{who}{g.get('kcal', '?')}/{g.get('eiwit_g', '?')}g")
                 out.append(f"{emoji} {label}: {names[0]}")
                 out.append(f"      {' · '.join(macros)}")
             else:
                 for i, g in enumerate(group):
                     out.append(f"{emoji} {label}: {names[i]}")
-                    out.append(f"      {g.get('kcal','?')} kcal · {g.get('eiwit_g','?')}g eiwit")
+                    out.append(
+                        f"      {g.get('kcal', '?')} kcal · {g.get('eiwit_g', '?')}g eiwit"
+                    )
     return out
 
 

@@ -3,6 +3,7 @@
 De keuzeheuristiek (`pick_best`) is een pure functie zonder netwerk, zodat hij
 los te testen is. `match_shopping_list` doet de daadwerkelijke API-calls.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,8 +25,6 @@ def clean_search_term(term: str) -> str:
     t = re.sub(r"\(.*?\)", "", term or "")
     t = t.split(",")[0]
     return " ".join(t.split()).strip()
-
-
 
 
 def flatten_results(results) -> list[dict]:
@@ -70,7 +69,9 @@ def normalize_candidate(raw: dict) -> dict | None:
     }
 
 
-def shortlist(results, search_term: str, max_item_cents: int, top_n: int = 10) -> list[dict]:
+def shortlist(
+    results, search_term: str, max_item_cents: int, top_n: int = 10
+) -> list[dict]:
     """Eerste top_n bruikbare kandidaten in PICNIC'S EIGEN zoekvolgorde.
 
     Picnic's zoekrelevantie is semantisch goed (zoek 'ui' -> 'Gele uien' eerst,
@@ -100,7 +101,7 @@ def _fallback_terms(term: str) -> list[str]:
     alts: list[str] = []
     if len(words) >= 2:
         alts.append(" ".join(words[-2:]))  # laatste twee woorden
-        alts.append(words[-1])             # hoofdwoord (meestal achteraan)
+        alts.append(words[-1])  # hoofdwoord (meestal achteraan)
     # dedup met behoud van volgorde, en niet de oorspronkelijke term herhalen
     seen = {term.lower()}
     out = []
@@ -142,7 +143,9 @@ def gather_candidates(
                 break
 
         if not cands:
-            no_result.append({"item": item.get("item", raw_term), "reason": "geen geschikte match"})
+            no_result.append(
+                {"item": item.get("item", raw_term), "reason": "geen geschikte match"}
+            )
             continue
         with_candidates.append(
             {
@@ -157,7 +160,9 @@ def gather_candidates(
     return with_candidates, no_result
 
 
-def pick_best(results: list[dict], search_term: str, max_item_cents: int) -> dict | None:
+def pick_best(
+    results: list[dict], search_term: str, max_item_cents: int
+) -> dict | None:
     """Kies het beste product: hoogste naam-overlap, daarna laagste prijs.
 
     Slaat producten over die duurder zijn dan `max_item_cents` (sanity-check
@@ -203,7 +208,9 @@ def match_shopping_list(picnic, shopping_list: list[dict], max_item_eur: float) 
 
         best = pick_best(results, term, max_item_cents)
         if best is None:
-            unmatched.append({"item": item.get("item", term), "reason": "geen geschikte match"})
+            unmatched.append(
+                {"item": item.get("item", term), "reason": "geen geschikte match"}
+            )
             continue
 
         matched.append(
@@ -237,7 +244,9 @@ def _matched_entry(item: dict, cand: dict, count: int) -> dict:
     }
 
 
-def assemble_from_choices(items_with_candidates: list[dict], choices: list[dict]) -> dict:
+def assemble_from_choices(
+    items_with_candidates: list[dict], choices: list[dict]
+) -> dict:
     """Bouw matched/unmatched uit Claude's keuzes.
 
     choices: [{index, product_id, aantal}]. product_id=None -> unmatched.
@@ -257,10 +266,14 @@ def assemble_from_choices(items_with_candidates: list[dict], choices: list[dict]
             # Claude vond bewust geen passend product (bv. alleen afgeleide
             # producten zoals saus/zeep). Eerlijk als 'niet gevonden' melden i.p.v.
             # iets verkeerds bestellen.
-            unmatched.append({"item": item["planned_item"], "reason": "geen geschikte match"})
+            unmatched.append(
+                {"item": item["planned_item"], "reason": "geen geschikte match"}
+            )
         else:
             # Geen/ongeldige keuze -> heuristische fallback: beste kandidaat.
-            matched.append(_matched_entry(item, item["candidates"][0], item["geschat_aantal"]))
+            matched.append(
+                _matched_entry(item, item["candidates"][0], item["geschat_aantal"])
+            )
     return {"matched": matched, "unmatched": unmatched}
 
 
@@ -277,7 +290,9 @@ def cart_total_cents(matched: list[dict]) -> int:
     return sum(m["line_total_cents"] for m in matched)
 
 
-def trim_to_budget(matched: list[dict], max_cents: int) -> tuple[list[dict], list[dict]]:
+def trim_to_budget(
+    matched: list[dict], max_cents: int
+) -> tuple[list[dict], list[dict]]:
     """Snoei het mandje deterministisch tot het totaal <= max_cents is.
 
     Strategie: verlaag steeds het aantal van de duurste regel met aantal>1
@@ -299,13 +314,17 @@ def trim_to_budget(matched: list[dict], max_cents: int) -> tuple[list[dict], lis
             m = max(reducible, key=lambda x: x["line_total_cents"])
             m["count"] -= 1
             m["line_total_cents"] = m["unit_price_cents"] * m["count"]
-            entry = removed.setdefault(m["id"], {"name": m["name"], "removed_count": 0, "removed_cents": 0})
+            entry = removed.setdefault(
+                m["id"], {"name": m["name"], "removed_count": 0, "removed_cents": 0}
+            )
             entry["removed_count"] += 1
             entry["removed_cents"] += m["unit_price_cents"]
         else:
             m = max(items, key=lambda x: x["line_total_cents"])
             items.remove(m)
-            entry = removed.setdefault(m["id"], {"name": m["name"], "removed_count": 0, "removed_cents": 0})
+            entry = removed.setdefault(
+                m["id"], {"name": m["name"], "removed_count": 0, "removed_cents": 0}
+            )
             entry["removed_count"] += m["count"]
             entry["removed_cents"] += m["line_total_cents"]
     return items, list(removed.values())

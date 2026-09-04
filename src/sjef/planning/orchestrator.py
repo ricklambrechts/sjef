@@ -7,14 +7,15 @@ Twee fasen, bewust gescheiden zodat er nooit per ongeluk besteld wordt:
                           Wordt alleen aangeroepen na expliciete goedkeuring,
                           en respecteert dry_run + max_order_eur.
 """
+
 from __future__ import annotations
 
 import logging
 from datetime import datetime
 
-from .config import Config, Secrets
-from .profiles import Profiles
-from . import matcher, meal_macros, planner
+from sjef.config import Config, Secrets
+from sjef.household.profiles import Profiles
+from sjef.planning import matcher, meal_macros, planner
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +62,9 @@ def build_proposal(
     # Echte macro's per ingrediënt + per persoon uit Picnic-labels.
     person_names = [p["name"] for p in profiles_ctx["persons"]] if profiles_ctx else []
     try:
-        plan = meal_macros.enrich(plan, picnic, config.max_item_eur, persons=person_names)
+        plan = meal_macros.enrich(
+            plan, picnic, config.max_item_eur, persons=person_names
+        )
     except Exception as exc:
         log.warning("Macro-verrijking mislukt (%s); menu houdt de schattingen.", exc)
 
@@ -71,7 +74,12 @@ def build_proposal(
     for term, count in config.staples.items():
         if term.lower() not in existing_terms:
             shopping.append(
-                {"item": term, "zoekterm": term, "hoeveelheid": "", "geschat_aantal": int(count)}
+                {
+                    "item": term,
+                    "zoekterm": term,
+                    "hoeveelheid": "",
+                    "geschat_aantal": int(count),
+                }
             )
 
     # Losse extra's voor deze bestelling (bv. wc-papier, schoonmaak). Worden
@@ -102,7 +110,9 @@ def build_proposal(
     try:
         log.info("Claude kiest beste producten (%d items)...", len(with_candidates))
         choices = planner.choose_products(
-            with_candidates, api_key=secrets.anthropic_api_key, model=secrets.planner_model
+            with_candidates,
+            api_key=secrets.anthropic_api_key,
+            model=secrets.planner_model,
         )
         match = matcher.assemble_from_choices(with_candidates, choices)
     except Exception as exc:
@@ -116,7 +126,11 @@ def build_proposal(
     raw_total = matcher.cart_total_cents(match["matched"])
     max_cents = int(config.max_order_eur * 100)
     if raw_total > max_cents:
-        log.info("Mandje €%.2f boven limiet; trimmen naar €%.2f", raw_total / 100, max_cents / 100)
+        log.info(
+            "Mandje €%.2f boven limiet; trimmen naar €%.2f",
+            raw_total / 100,
+            max_cents / 100,
+        )
         match["matched"], trimmed = matcher.trim_to_budget(match["matched"], max_cents)
 
     total = matcher.cart_total_cents(match["matched"])
@@ -188,7 +202,7 @@ def place_order(config: Config, picnic, proposal: dict, slot_id: str) -> dict:
     if total > config.max_order_eur * 100:
         return {
             "ok": False,
-            "reason": f"Totaal {euro(total)} boven limiet {euro(int(config.max_order_eur*100))}. "
+            "reason": f"Totaal {euro(total)} boven limiet {euro(int(config.max_order_eur * 100))}. "
             f"Pas max_order_eur aan of verklein de bestelling.",
         }
     if not proposal["matched"]:
@@ -211,7 +225,9 @@ def place_order(config: Config, picnic, proposal: dict, slot_id: str) -> dict:
         # Geen echt order-id (cart heeft alleen het label 'shopping_cart'):
         # mandje is gevuld en slot geboekt, maar de order is NIET geplaatst.
         # In de praktijk vereist Picnic de laatste bevestiging/betaling in de app.
-        log.warning("Geen geldig order-id; order niet automatisch geplaatst — afronden in de app.")
+        log.warning(
+            "Geen geldig order-id; order niet automatisch geplaatst — afronden in de app."
+        )
 
     return {
         "ok": True,

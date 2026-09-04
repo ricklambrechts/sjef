@@ -7,18 +7,19 @@ Flow: per persoon een reeks velden; daarna 'nog iemand?'; tot slot huishoud-
 brede vragen (dagen, gedeelde gerechten, notities). Resultaat is een dict dat
 1-op-1 in profiles.yaml past.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .nutrition import ACTIVITY_FACTORS, GOAL_KCAL_FACTOR
+from sjef.household.nutrition import ACTIVITY_FACTORS, GOAL_KCAL_FACTOR
 
 
 @dataclass
 class Field:
     key: str
     question: str
-    kind: str = "text"          # text | int | float | choice | bool
+    kind: str = "text"  # text | int | float | choice | bool
     choices: list[str] | None = None
     optional: bool = False
     help: str = ""
@@ -155,7 +156,7 @@ class OnboardingFlow:
     persons: list[dict] = field(default_factory=list)
     household: dict = field(default_factory=dict)
     _current: dict = field(default_factory=dict)
-    _stage: str = "person"     # person | another | household
+    _stage: str = "person"  # person | another | household
     _idx: int = 0
     done: bool = False
 
@@ -214,7 +215,7 @@ class OnboardingFlow:
             if value:  # ja -> nieuwe persoon
                 self._stage = "person"
                 self._idx = 0
-            else:       # nee -> huishoud-vragen
+            else:  # nee -> huishoud-vragen
                 self._stage = "household"
                 self._idx = 0
             return True, None

@@ -6,14 +6,15 @@ en levert een geconsolideerde boodschappenlijst met zoektermen voor Picnic.
 Gebruikt forced tool-use zodat we gegarandeerd geldige JSON terugkrijgen, en
 prompt caching op de (statische) system prompt om kosten te drukken.
 """
+
 from __future__ import annotations
 
 import logging
 
 from anthropic import Anthropic
 
-from .config import Config
-from .nutrition import NUTRITION_PRINCIPLES
+from sjef.config import Config
+from sjef.household.nutrition import NUTRITION_PRINCIPLES
 
 log = logging.getLogger(__name__)
 
@@ -54,8 +55,14 @@ PLAN_TOOL = {
                                         "items": {
                                             "type": "object",
                                             "properties": {
-                                                "naam": {"type": "string", "description": "Ingrediënt, bv. 'Magere kwark'."},
-                                                "zoekterm": {"type": "string", "description": "Korte, generieke zoekterm voor Picnic."},
+                                                "naam": {
+                                                    "type": "string",
+                                                    "description": "Ingrediënt, bv. 'Magere kwark'.",
+                                                },
+                                                "zoekterm": {
+                                                    "type": "string",
+                                                    "description": "Korte, generieke zoekterm voor Picnic.",
+                                                },
                                                 "porties": {
                                                     "type": "array",
                                                     "description": "Hoeveelheid in gram/ml per persoon. Gebruik exact de "
@@ -63,7 +70,9 @@ PLAN_TOOL = {
                                                     "items": {
                                                         "type": "object",
                                                         "properties": {
-                                                            "persoon": {"type": "string"},
+                                                            "persoon": {
+                                                                "type": "string"
+                                                            },
                                                             "gram": {"type": "number"},
                                                         },
                                                         "required": ["persoon", "gram"],
@@ -74,7 +83,13 @@ PLAN_TOOL = {
                                         },
                                     },
                                 },
-                                "required": ["naam", "type", "kcal", "eiwit_g", "ingredienten"],
+                                "required": [
+                                    "naam",
+                                    "type",
+                                    "kcal",
+                                    "eiwit_g",
+                                    "ingredienten",
+                                ],
                             },
                         },
                         "totaal_kcal": {"type": "integer"},
@@ -88,7 +103,10 @@ PLAN_TOOL = {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "item": {"type": "string", "description": "Productnaam, bv. 'Kipfilet'"},
+                        "item": {
+                            "type": "string",
+                            "description": "Productnaam, bv. 'Kipfilet'",
+                        },
                         "zoekterm": {
                             "type": "string",
                             "description": "Zoekterm voor de Picnic-app, kort en generiek.",
@@ -111,7 +129,13 @@ PLAN_TOOL = {
                             "zuivel, groente, fruit, brood, granen).",
                         },
                     },
-                    "required": ["item", "zoekterm", "hoeveelheid", "geschat_aantal", "voorraadkast"],
+                    "required": [
+                        "item",
+                        "zoekterm",
+                        "hoeveelheid",
+                        "geschat_aantal",
+                        "voorraadkast",
+                    ],
                 },
             },
         },
@@ -249,7 +273,9 @@ def build_profiles_prompt(
     return "\n".join(lines)
 
 
-def build_user_prompt(config: Config, mode: str, macros: dict, request: str | None = None) -> str:
+def build_user_prompt(
+    config: Config, mode: str, macros: dict, request: str | None = None
+) -> str:
     exclude = ", ".join(config.diet_exclude) or "geen"
     prefer = ", ".join(config.diet_prefer) or "geen specifieke"
     lines = [
@@ -373,7 +399,10 @@ CHOOSE_TOOL = {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "index": {"type": "integer", "description": "Index van het boodschap-item."},
+                        "index": {
+                            "type": "integer",
+                            "description": "Index van het boodschap-item.",
+                        },
                         "product_id": {
                             "type": ["string", "null"],
                             "description": "Gekozen product-id, of null als geen kandidaat past.",
@@ -397,10 +426,14 @@ def _candidate_block(items_with_candidates: list[dict]) -> str:
     lines = []
     for i, item in enumerate(items_with_candidates):
         need = f" (nodig: {item['hoeveelheid']})" if item.get("hoeveelheid") else ""
-        lines.append(f"[{i}] {item['planned_item']}{need} — geschat {item['geschat_aantal']} verpakking(en):")
+        lines.append(
+            f"[{i}] {item['planned_item']}{need} — geschat {item['geschat_aantal']} verpakking(en):"
+        )
         for c in item["candidates"]:
             uq = c.get("unit_quantity", "?")
-            lines.append(f"    id={c['id']} | {c['name']} | {uq} | €{c['price_cents']/100:.2f}")
+            lines.append(
+                f"    id={c['id']} | {c['name']} | {uq} | €{c['price_cents'] / 100:.2f}"
+            )
     return "\n".join(lines)
 
 
@@ -433,7 +466,9 @@ def choose_products(
     resp = client.messages.create(
         model=model,
         max_tokens=4096,
-        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+        system=[
+            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+        ],
         tools=[CHOOSE_TOOL],
         tool_choice={"type": "tool", "name": "productkeuzes"},
         messages=[{"role": "user", "content": user}],

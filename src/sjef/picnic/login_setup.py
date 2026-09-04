@@ -1,16 +1,17 @@
 """Interactieve of twee-fasige Picnic-login (incl. 2FA).
 
 Interactief (mens):
-    python -m src.login_setup
+    uv run sjef picnic-login
 
 Twee-fasig (handig als iemand anders de tweede stap doet, bv. een agent):
-    python -m src.login_setup --start              # logt in, triggert SMS
-    python -m src.login_setup --verify 123456      # voltooit met de SMS-code
+    uv run sjef picnic-login --start              # logt in, triggert SMS
+    uv run sjef picnic-login --verify 123456      # voltooit met de SMS-code
 
 In beide gevallen wordt de definitieve auth-token in state/picnic_auth_token.txt
 gezet. De pending-token uit fase 1 staat tijdelijk in state/.pending_2fa_token.txt
 en wordt na succesvolle verify verwijderd.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,8 +20,8 @@ import sys
 from python_picnic_api2 import PicnicAPI
 from python_picnic_api2.session import Picnic2FAError, Picnic2FARequired
 
-from .config import Secrets
-from .picnic_client import TOKEN_FILE
+from sjef.config import Secrets
+from sjef.picnic.picnic_client import TOKEN_FILE
 
 PENDING_FILE = TOKEN_FILE.parent / ".pending_2fa_token.txt"
 
@@ -41,15 +42,17 @@ def _phase_start(s: Secrets, channel: str = "SMS") -> None:
     api = PicnicAPI(country_code=s.picnic_country_code)
     try:
         api.login(s.picnic_username, s.picnic_password)
-    except Picnic2FARequired:
+    except Picnic2FARequired as e:
         api.generate_2fa_code(channel=channel)
         pending = api.session.auth_token
         if not pending:
-            raise SystemExit("Geen pending-token ontvangen — kan fase 2 niet doen.")
+            raise SystemExit(
+                "Geen pending-token ontvangen — kan fase 2 niet doen."
+            ) from e
         PENDING_FILE.parent.mkdir(parents=True, exist_ok=True)
         PENDING_FILE.write_text(pending, encoding="utf-8")
         print(f"📨 {channel}-code verstuurd. Voer 'm in met:")
-        print(f"   python -m src.login_setup --verify <code>")
+        print("   uv run sjef picnic-login --verify <code>")
         return
     # Geen 2FA nodig → klaar.
     _save_final_token(api)
@@ -66,7 +69,7 @@ def _phase_verify(s: Secrets, code: str) -> None:
     try:
         api.verify_2fa_code(code)
     except Picnic2FAError as e:
-        raise SystemExit(f"❌ 2FA-code afgewezen: {e}")
+        raise SystemExit(f"❌ 2FA-code afgewezen: {e}") from e
     _save_final_token(api)
 
 
@@ -75,7 +78,9 @@ def _phase_interactive(s: Secrets) -> None:
     try:
         api.login(s.picnic_username, s.picnic_password)
     except Picnic2FARequired:
-        channel = input("2FA vereist. Kanaal [SMS/EMAIL] (default SMS): ").strip() or "SMS"
+        channel = (
+            input("2FA vereist. Kanaal [SMS/EMAIL] (default SMS): ").strip() or "SMS"
+        )
         api.generate_2fa_code(channel=channel.upper())
         print(f"{channel} verstuurd.")
         code = input("Voer de 2FA-code in: ").strip()
@@ -84,9 +89,15 @@ def _phase_interactive(s: Secrets) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Picnic-login + 2FA.")
-    parser.add_argument("--start", action="store_true", help="Fase 1: login + trigger SMS")
-    parser.add_argument("--verify", metavar="CODE", help="Fase 2: voltooi met de SMS-code")
+    parser = argparse.ArgumentParser(
+        prog="sjef picnic-login", description="Picnic-login + 2FA."
+    )
+    parser.add_argument(
+        "--start", action="store_true", help="Fase 1: login + trigger SMS"
+    )
+    parser.add_argument(
+        "--verify", metavar="CODE", help="Fase 2: voltooi met de SMS-code"
+    )
     parser.add_argument("--channel", default="SMS", choices=["SMS", "EMAIL"])
     args = parser.parse_args(argv)
 

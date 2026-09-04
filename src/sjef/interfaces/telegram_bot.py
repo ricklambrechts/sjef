@@ -18,6 +18,7 @@ Veiligheid:
     bevestig-knop. Pas dan wordt place_order aangeroepen.
   * place_order respecteert DRY_RUN en de uitgavenlimiet.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -43,11 +44,12 @@ from telegram.ext import (
     filters,
 )
 
-from . import formatting, orchestrator
-from .config import Config, Secrets
-from .onboarding import OnboardingFlow
-from .picnic_client import PicnicClient
-from .profiles import Profiles
+from sjef.config import Config, Secrets
+from sjef.household.onboarding import OnboardingFlow
+from sjef.household.profiles import Profiles
+from sjef.interfaces import formatting
+from sjef.picnic.picnic_client import PicnicClient
+from sjef.planning import orchestrator
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +59,10 @@ ONB_ASK = 1
 
 def _authorized(update: Update, secrets: Secrets) -> bool:
     uid = update.effective_user.id if update.effective_user else None
-    return secrets.telegram_allowed_user_id is not None and uid == secrets.telegram_allowed_user_id
+    return (
+        secrets.telegram_allowed_user_id is not None
+        and uid == secrets.telegram_allowed_user_id
+    )
 
 
 def _effective_dry_run(app: Application) -> bool:
@@ -86,7 +91,9 @@ def _get_picnic(app: Application) -> PicnicClient:
     return client
 
 
-async def _send_proposal(bot: Bot, chat_id: int, proposal: dict, app: Application, prefix: str = "") -> None:
+async def _send_proposal(
+    bot: Bot, chat_id: int, proposal: dict, app: Application, prefix: str = ""
+) -> None:
     """Stuur het voorstel + slotkeuze. Slaat de actieve sessie op in bot_data,
     zodat zowel /plan als de auto-run dezelfde goedkeuringsknoppen gebruiken."""
     if prefix:
@@ -127,7 +134,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     secrets: Secrets = context.application.bot_data["secrets"]
     if not _authorized(update, secrets):
         await update.message.reply_text("⛔ Niet geautoriseerd.")
-        log.warning("Ongeautoriseerde toegang door user-id %s", update.effective_user.id)
+        log.warning(
+            "Ongeautoriseerde toegang door user-id %s", update.effective_user.id
+        )
         return
     await update.message.reply_text(
         "🧑‍🍳 Hoi, ik ben *Sjef* — jouw AI-keukenmaatje.\n\n"
@@ -176,7 +185,9 @@ def _onb_keyboard(flow: OnboardingFlow):
             rows.append(["skip"])
         return ReplyKeyboardMarkup(rows, one_time_keyboard=True, resize_keyboard=True)
     if f and f.optional:
-        return ReplyKeyboardMarkup([["skip"]], one_time_keyboard=True, resize_keyboard=True)
+        return ReplyKeyboardMarkup(
+            [["skip"]], one_time_keyboard=True, resize_keyboard=True
+        )
     return ReplyKeyboardRemove()
 
 
@@ -191,7 +202,9 @@ async def setup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         "🛠️ Profielen instellen. Typ /cancel om te stoppen.\n"
         "Op het eind wordt alles opgeslagen in profiles.yaml (lokaal, privé)."
     )
-    await update.message.reply_text(flow.current_question(), reply_markup=_onb_keyboard(flow))
+    await update.message.reply_text(
+        flow.current_question(), reply_markup=_onb_keyboard(flow)
+    )
     return ONB_ASK
 
 
@@ -208,10 +221,12 @@ async def setup_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     if flow.done:
         try:
-            path = Profiles.save(flow.to_profiles_dict())
+            Profiles.save(flow.to_profiles_dict())
         except Exception as exc:
             log.exception("profiel opslaan mislukt")
-            await update.message.reply_text(f"❌ Opslaan mislukt: {exc}", reply_markup=ReplyKeyboardRemove())
+            await update.message.reply_text(
+                f"❌ Opslaan mislukt: {exc}", reply_markup=ReplyKeyboardRemove()
+            )
             return ConversationHandler.END
         context.user_data.pop("onb", None)
         await update.message.reply_text(
@@ -221,7 +236,9 @@ async def setup_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         )
         return ConversationHandler.END
 
-    await update.message.reply_text(flow.current_question(), reply_markup=_onb_keyboard(flow))
+    await update.message.reply_text(
+        flow.current_question(), reply_markup=_onb_keyboard(flow)
+    )
     return ONB_ASK
 
 
@@ -273,7 +290,9 @@ async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     mode, request = _parse_plan_args(config, context.args)
-    note = f" (verzoek: {request})" if request else (f" (modus: {mode})" if mode else "")
+    note = (
+        f" (verzoek: {request})" if request else (f" (modus: {mode})" if mode else "")
+    )
     await update.message.reply_text(f"🧠 Weekmenu genereren en producten zoeken…{note}")
 
     try:
@@ -350,7 +369,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         idx = int(data.split(":", 1)[1])
         slots = active.get("slots", [])
         if idx >= len(slots):
-            await query.edit_message_text("Slot niet meer beschikbaar. Doe /plan opnieuw.")
+            await query.edit_message_text(
+                "Slot niet meer beschikbaar. Doe /plan opnieuw."
+            )
             return
         slot = slots[idx]
         active["chosen_slot"] = slot
@@ -359,7 +380,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         live = "" if eff_dry else " (LIVE — er wordt echt besteld!)"
         kb = InlineKeyboardMarkup(
             [
-                [InlineKeyboardButton(f"✅ Bevestig & bestel {total}{live}", callback_data="confirm")],
+                [
+                    InlineKeyboardButton(
+                        f"✅ Bevestig & bestel {total}{live}", callback_data="confirm"
+                    )
+                ],
                 [InlineKeyboardButton("❌ Annuleren", callback_data="cancel")],
             ]
         )
@@ -416,7 +441,9 @@ def build_application(config: Config, secrets: Secrets) -> Application:
     if not secrets.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN ontbreekt in .env")
     if secrets.telegram_allowed_user_id is None:
-        raise RuntimeError("TELEGRAM_ALLOWED_USER_ID ontbreekt in .env (veiligheidsslot)")
+        raise RuntimeError(
+            "TELEGRAM_ALLOWED_USER_ID ontbreekt in .env (veiligheidsslot)"
+        )
 
     app = Application.builder().token(secrets.telegram_bot_token).build()
     app.bot_data["config"] = config

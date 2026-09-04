@@ -4,6 +4,7 @@ de calorie- en macrodoelen via de voedings-engine.
 profiles.yaml bevat PERSOONSGEGEVENS en is git-ignored. Een generieke
 profiles.example.yaml staat wel in de repo als sjabloon.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -11,9 +12,9 @@ from pathlib import Path
 
 import yaml
 
-from . import nutrition
+from sjef.config import ROOT
+from sjef.household import nutrition
 
-ROOT = Path(__file__).resolve().parent.parent
 PROFILES_FILE = ROOT / "profiles.yaml"
 
 
@@ -47,7 +48,7 @@ class Person:
     def prefer(self) -> list[str]:
         return [x for x in (self.raw.get("prefer") or []) if x]
 
-    def compute(self) -> "Person":
+    def compute(self) -> Person:
         self.targets = nutrition.compute_targets(
             sex=self.raw.get("sex", ""),
             age=int(self.raw.get("age", 30)),
@@ -68,9 +69,9 @@ class Person:
         excl = ", ".join(self.exclude) or "geen"
         pref = ", ".join(self.prefer) or "geen"
         return (
-            f"{self.name} — {self.raw.get('sex','?')}, {self.raw.get('age','?')} jr, "
-            f"{self.raw.get('height_cm','?')} cm, {self.raw.get('weight_kg','?')} kg{bf}; "
-            f"doel: {self.goal} ({self.raw.get('activity','matig')}).\n"
+            f"{self.name} — {self.raw.get('sex', '?')}, {self.raw.get('age', '?')} jr, "
+            f"{self.raw.get('height_cm', '?')} cm, {self.raw.get('weight_kg', '?')} kg{bf}; "
+            f"doel: {self.goal} ({self.raw.get('activity', 'matig')}).\n"
             f"  Dagdoel: ~{t['kcal']} kcal, {t['eiwit_g']} g eiwit, "
             f"{t['vet_g']} g vet, {t['koolhydraten_g']} g koolhydraten.\n"
             f"  Dieet: {self.diet_profile}; uitsluiten: {excl}; voorkeur: {pref}.\n"
@@ -83,12 +84,12 @@ class Profiles:
     raw: dict
 
     @classmethod
-    def load(cls, path: Path | None = None) -> "Profiles | None":
+    def load(cls, path: Path | None = None) -> Profiles | None:
         """Geeft None terug als profiles.yaml niet bestaat (legacy-modus)."""
         path = path or PROFILES_FILE
         if not path.exists():
             return None
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
         if not data.get("persons"):
             return None
