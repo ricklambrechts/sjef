@@ -106,8 +106,13 @@ def _num(v):
     return v
 
 
+def _text(v) -> str:
+    """Normaliseer lege tekstcellen, ook pandas 3's NaN voor stringkolommen."""
+    return "" if pd.isna(v) else str(v)
+
+
 def _lst(v) -> list[str]:
-    return [x.strip() for x in str(v or "").split(",") if x.strip()]
+    return [x.strip() for x in _text(v).split(",") if x.strip()]
 
 
 config = Config.load()
@@ -552,7 +557,7 @@ with tab_settings:
     if st.button("💾 Instellingen opslaan", type="primary"):
         new_persons = []
         for _, r in edited_p.iterrows():
-            name = str(r.get("Naam", "")).strip()
+            name = _text(r.get("Naam", "")).strip()
             if not name:
                 continue
             person = {
@@ -567,8 +572,8 @@ with tab_settings:
                 "diet_profile": r["Dieet"],
                 "exclude": _lst(r["Uitsluiten"]),
                 "prefer": _lst(r["Voorkeuren"]),
-                "training": str(r["Training"] or ""),
-                "notes": str(r["Notities"] or ""),
+                "training": _text(r["Training"]),
+                "notes": _text(r["Notities"]),
             }
             bf = _num(r["Vet %"])
             if bf is not None:

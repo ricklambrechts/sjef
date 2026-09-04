@@ -213,7 +213,8 @@ uv run sjef selftest
 
 ## Wat is getest
 
-- CI draait de tests met pytest en de offline selftests op Python 3.11 t/m 3.14.
+- Python 3.13+ is vereist voor de Picnic-library met 2FA-ondersteuning.
+- CI draait de tests met pytest en de offline selftests op Python 3.13 en 3.14.
 - `uv run sjef selftest` dekt de pure logica: config-laden, productkeuze-heuristiek,
   plan-validatie, slot-parsing en opmaak — **zonder** netwerk of credentials.
 - De live-paden (Picnic-login/zoeken/bestellen, Claude-call, Telegram) vereisen

@@ -1,5 +1,9 @@
 """Wrapper rond python-picnic-api2.
 
+Zet de 2.x-modellen aan deze grens om naar de dicts die de planner gebruikt.
+Voor domein-responses bewaren we de originele payload, inclusief velden die
+de library nog niet modelleert (zoals checkout_order_id).
+
 Voegt de twee endpoints toe die de library mist maar die we nodig hebben om
 end-to-end te bestellen: een bezorgslot boeken en de order bevestigen. Deze
 roepen we rechtstreeks aan via de interne sessie van de library (zelfde
@@ -77,23 +81,25 @@ class PicnicClient:
     # --------------------------------------------------------------- lezen
     def search(self, term: str) -> list[dict]:
         """Zoek producten. Geeft een platte lijst van article-dicts terug."""
-        return self.api.search(term)
+        return [
+            item.model_dump(exclude_none=True) for item in self.api.search(term).items
+        ]
 
     def get_cart(self) -> dict:
-        return self.api.get_cart()
+        return self.api.get_cart().raw
 
     def get_delivery_slots(self) -> dict:
-        return self.api.get_delivery_slots()
+        return self.api.get_delivery_slots().raw
 
     def get_user(self) -> dict:
-        return self.api.get_user()
+        return self.api.get_user().raw
 
     # ----------------------------------------------------- mandje wijzigen
     def clear_cart(self) -> dict | None:
         if self.dry_run:
             log.info("[DRY-RUN] clear_cart() overgeslagen")
             return None
-        return self.api.clear_cart()
+        return self.api.clear_cart().raw
 
     def add_product(self, product_id: str, count: int = 1) -> dict | None:
         if self.dry_run:
@@ -101,7 +107,7 @@ class PicnicClient:
                 "[DRY-RUN] add_product(%s, count=%s) overgeslagen", product_id, count
             )
             return None
-        return self.api.add_product(product_id, count)
+        return self.api.add_product(product_id, count).raw
 
     # ----------------------------------------------- order plaatsen (geld!)
     def set_delivery_slot(self, slot_id: str) -> dict | None:
