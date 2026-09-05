@@ -26,11 +26,17 @@ class Secrets:
     picnic_password: str | None
     picnic_country_code: str
     picnic_auth_token: str | None
-    anthropic_api_key: str | None
-    planner_model: str
+    codex_model: str
     telegram_bot_token: str | None
     telegram_allowed_user_id: int | None
     dry_run: bool
+    anthropic_api_key: str = field(default="", repr=False)
+    anthropic_model: str = "claude-sonnet-4-6"
+    codex_api_key: str = field(default="", repr=False)
+
+    @property
+    def anthropic_key_configured(self) -> bool:
+        return bool(self.anthropic_api_key)
 
     @classmethod
     def load(cls) -> Secrets:
@@ -41,13 +47,16 @@ class Secrets:
             picnic_password=os.getenv("PICNIC_PASSWORD"),
             picnic_country_code=os.getenv("PICNIC_COUNTRY_CODE", "NL"),
             picnic_auth_token=os.getenv("PICNIC_AUTH_TOKEN") or None,
-            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
-            planner_model=os.getenv("PLANNER_MODEL", "claude-sonnet-4-6"),
+            codex_model=os.getenv("CODEX_MODEL", "").strip(),
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
             telegram_allowed_user_id=int(allowed)
             if allowed and allowed.strip()
             else None,
             dry_run=_as_bool(os.getenv("DRY_RUN"), default=True),
+            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", "").strip(),
+            anthropic_model=os.getenv("ANTHROPIC_MODEL", "").strip()
+            or "claude-sonnet-4-6",
+            codex_api_key=os.getenv("CODEX_API_KEY", "").strip(),
         )
 
 
@@ -72,6 +81,14 @@ class Config:
         with open(path, "w", encoding="utf-8") as fh:
             yaml.safe_dump(self.raw, fh, allow_unicode=True, sort_keys=False)
         return path
+
+    def llm_provider(self) -> str | None:
+        return self.raw.get("llm", {}).get("provider")
+
+    def set_llm_provider(self, provider: str) -> None:
+        if provider not in {"codex", "anthropic"}:
+            raise ValueError(f"Onbekende AI-provider: {provider}")
+        self.raw.setdefault("llm", {})["provider"] = provider
 
     def dry_run(self, env_default: bool = True) -> bool:
         """Effectieve dry-run-stand. Komt uit config.yaml (safety.dry_run) als die

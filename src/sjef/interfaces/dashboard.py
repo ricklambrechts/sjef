@@ -22,6 +22,7 @@ import streamlit as st
 from sjef.config import Config, Secrets
 from sjef.household import nutrition
 from sjef.household.profiles import Profiles
+from sjef.interfaces.plan_status import planning_jobs, render_planning_controls
 from sjef.picnic.picnic_client import PicnicClient
 from sjef.planning import orchestrator
 
@@ -145,6 +146,20 @@ else:
 
 # Sidebar: live doel-overzicht
 with st.sidebar:
+    from sjef.interfaces.ai_login import render_chatgpt_login
+    from sjef.llm.factory import create_auth
+
+    try:
+        ai_ready = render_chatgpt_login(
+            create_auth(secrets),
+            config=config,
+            anthropic_key_configured=secrets.anthropic_key_configured,
+            codex_key_configured=bool(secrets.codex_api_key),
+        )
+    except ValueError as exc:
+        st.warning(str(exc))
+        ai_ready = False
+    st.divider()
     st.markdown("### 🧑‍🍳 Aan tafel")
     _profiles = Profiles.load()
     if _profiles:
@@ -163,7 +178,16 @@ with st.sidebar:
     st.caption(
         f"💶 Budget €{config.max_order_eur:.0f} · streef €{config.budget_target_eur or 0:.0f}"
     )
-    st.caption(f"🧠 Sjef denkt met: {secrets.planner_model}")
+    st.caption(
+        "🧠 Model: "
+        + (
+            secrets.anthropic_model
+            if config.llm_provider() == "anthropic"
+            else (secrets.codex_model or "Codex")
+            if config.llm_provider() == "codex"
+            else "Kies eerst een AI"
+        )
+    )
 
 tab_plan, tab_settings = st.tabs(["🍽️ Deze week", "⚙️ Instellingen"])
 
@@ -183,29 +207,30 @@ with tab_plan:
             height=90,
         )
 
-    if st.button("🍳 Sjef, maak een plan", type="primary"):
-        extra_items = [ln.strip() for ln in extras_raw.splitlines() if ln.strip()]
-        try:
-            with st.spinner(
-                "Sjef stelt het menu samen en zoekt de boodschappen bij Picnic… (15-40s)"
-            ):
-                proposal = orchestrator.build_proposal(
-                    config,
-                    secrets,
-                    get_picnic(dry),
-                    mode=None,
-                    request=request or None,
-                    extra_items=extra_items,
-                )
-            st.session_state["proposal"] = proposal
-            st.session_state.pop("order_result", None)
-        except Exception as exc:
-            st.exception(exc)
+    render_planning_controls(
+        planning_jobs(),
+        inputs={
+            "config": {
+                **config.raw,
+                "llm": {
+                    **config.raw.get("llm", {}),
+                    "provider": config.llm_provider(),
+                },
+            },
+            "request": request or None,
+            "extra_items": [
+                line.strip() for line in extras_raw.splitlines() if line.strip()
+            ],
+        },
+        ready=ai_ready,
+    )
 
     proposal = st.session_state.get("proposal")
     if not proposal:
         st.info(
-            "👋 Nog geen plan. Druk op **‘Sjef, maak een plan’** en ik regel je week."
+            "Je plan verschijnt hier zodra de planning klaar is."
+            if st.session_state.get("planning_running")
+            else "👋 Nog geen plan. Druk op **‘Sjef, maak een plan’** en ik regel je week."
         )
     else:
         persons = proposal.get("persons") or []
@@ -222,13 +247,25 @@ with tab_plan:
         if proposal["plan"].get("samenvatting"):
             st.caption(proposal["plan"]["samenvatting"])
 
+        def carbs(values):
+            value = values.get("koolhydraten_g")
+            return f"{value}g koolhydraten" if value is not None else "— koolhydraten"
+
+        def macro_summary(values):
+            kcal = values.get("kcal")
+            protein = values.get("eiwit_g")
+            return (
+                f"{kcal if kcal is not None else '—'} kcal / "
+                f"{protein if protein is not None else '—'}g eiwit / {carbs(values)}"
+            )
+
         person_names = [p["name"] for p in persons]
 
         st.subheader("📋 Menu")
         st.caption(
             "Macro's per ingrediënt/persoon zijn berekend uit de echte Picnic-"
             "voedingswaarden. Let op: verse producten zonder voedingstabel (‘—’, bv. "
-            "groente/fruit) tellen NIET mee — **eiwit is accuraat, kcal is een ondergrens**."
+            "groente/fruit) tellen NIET mee — kcal en eiwit kunnen daardoor onvolledig zijn. Onbekende koolhydraattotalen tonen we als ‘—’."
         )
         for day in proposal["plan"].get("dagen", []):
             # Per-persoon dagtotalen in de koptekst (echte berekende waarden).
@@ -236,12 +273,12 @@ with tab_plan:
             head = f"{day.get('dag', '?')}"
             if day_pp:
                 head += " — " + " · ".join(
-                    f"{name}: {day_pp[name]['kcal']} kcal / {day_pp[name]['eiwit_g']}g eiwit"
+                    f"{name}: {macro_summary(day_pp[name])}"
                     for name in person_names
                     if name in day_pp
                 )
             else:
-                head += f" — {day.get('totaal_kcal', '?')} kcal / {day.get('totaal_eiwit_g', '?')}g eiwit"
+                head += f" — {day.get('totaal_kcal', '?')} kcal / {day.get('totaal_eiwit_g', '?')}g eiwit / {carbs({'koolhydraten_g': day.get('ingr_koolhydraten_g')})}"
             with st.expander(head):
                 for m in day.get("maaltijden", []):
                     st.markdown(
@@ -252,10 +289,14 @@ with tab_plan:
                     if mpp:
                         st.caption(
                             "  ·  ".join(
-                                f"**{name}**: {mpp[name]['kcal']} kcal / {mpp[name]['eiwit_g']}g eiwit"
+                                f"**{name}**: {macro_summary(mpp[name])}"
                                 for name in person_names
                                 if name in mpp
                             )
+                        )
+                    else:
+                        st.caption(
+                            carbs({"koolhydraten_g": m.get("ingr_koolhydraten_g")})
                         )
                     ings = m.get("ingredienten") or []
                     if ings:
@@ -269,10 +310,11 @@ with tab_plan:
                             for name in person_names:
                                 cell = pp.get(name)
                                 row[name] = (
-                                    f"{cell['gram']}g · {cell['kcal']}kcal · {cell['eiwit_g']}g eiwit"
+                                    f"{cell['gram']}g · {macro_summary(cell)}"
                                     if cell
                                     else "—"
                                 )
+                            row["Koolhydraten (tot.)"] = carbs(i)
                             row["Picnic-product"] = i.get("bron_product") or "—"
                             rows.append(row)
                         st.dataframe(

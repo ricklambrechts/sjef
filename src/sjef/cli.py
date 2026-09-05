@@ -66,6 +66,12 @@ def main(argv: list[str] | None = None) -> int | None:
         "picnic-login", help="Inloggen bij Picnic met 2FA", add_help=False
     )
     commands.add_parser("bot", help="Start de Telegram-bot")
+    login_parser = commands.add_parser(
+        "ai-login", help="Inloggen met je ChatGPT-account"
+    )
+    login_parser.add_argument(
+        "--device-auth", action="store_true", help="Inloggen met een apparaatcode"
+    )
     plan_parser = commands.add_parser(
         "plan", help="Maak een voorstel zonder te bestellen"
     )
@@ -79,6 +85,10 @@ def main(argv: list[str] | None = None) -> int | None:
 
         return login(argv[1:])
     args = parser.parse_args(argv)
+    if args.command == "ai-login":
+        from sjef.interfaces.ai_login_cli import ai_login
+
+        return ai_login(device_auth=args.device_auth)
     if args.command == "bot":
         return run_bot()
     if args.command == "plan":

@@ -11,10 +11,12 @@ Twee fasen, bewust gescheiden zodat er nooit per ongeluk besteld wordt:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 
 from sjef.config import Config, Secrets
 from sjef.household.profiles import Profiles
+from sjef.llm.factory import create_llm
 from sjef.planning import matcher, meal_macros, planner
 
 log = logging.getLogger(__name__)
@@ -32,7 +34,12 @@ def build_proposal(
     mode: str | None,
     request: str | None = None,
     extra_items: list[str] | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict:
+    def report(stage: str):
+        if progress:
+            progress(stage)
+
     mode = (mode or config.default_mode).lower()
     macros = config.macros_for(mode)
 
@@ -50,17 +57,19 @@ def build_proposal(
         mode,
         bool(request),
     )
+    llm = create_llm(secrets, provider=config.llm_provider())
+    report("Weekmenu genereren met AI")
     plan = planner.generate_plan(
         config,
         mode,
-        api_key=secrets.anthropic_api_key,
-        model=secrets.planner_model,
+        llm=llm,
         request=request,
         profiles_ctx=profiles_ctx,
     )
 
     # Echte macro's per ingrediënt + per persoon uit Picnic-labels.
     person_names = [p["name"] for p in profiles_ctx["persons"]] if profiles_ctx else []
+    report("Voedingswaarden ophalen bij Picnic")
     try:
         plan = meal_macros.enrich(
             plan, picnic, config.max_item_eur, persons=person_names
@@ -101,27 +110,30 @@ def build_proposal(
         ]
 
     log.info("Producten zoeken bij Picnic (%d items)...", len(shopping))
+    report(f"Boodschappen zoeken bij Picnic ({len(shopping)} producten)")
     with_candidates, no_result = matcher.gather_candidates(
         picnic, shopping, config.max_item_eur
     )
 
-    # Claude kiest per item het beste product (pakgrootte/prijs-per-kilo);
+    # LLM kiest per item het beste product (pakgrootte/prijs-per-kilo);
     # valt terug op de heuristische shortlist-keuze als de call faalt.
     try:
-        log.info("Claude kiest beste producten (%d items)...", len(with_candidates))
+        report("Passende producten en aantallen kiezen met AI")
+        log.info("LLM kiest beste producten (%d items)...", len(with_candidates))
         choices = planner.choose_products(
             with_candidates,
-            api_key=secrets.anthropic_api_key,
-            model=secrets.planner_model,
+            llm=llm,
+            cost_conscious=config.cost_conscious,
         )
         match = matcher.assemble_from_choices(with_candidates, choices)
     except Exception as exc:
-        log.warning("Productkeuze via Claude mislukt (%s); heuristische fallback.", exc)
+        log.warning("Productkeuze via LLM mislukt (%s); heuristische fallback.", exc)
         match = matcher.assemble_heuristic(with_candidates)
 
     match["unmatched"] = match.get("unmatched", []) + no_result
 
     # Harde budget-trimstap: garandeer dat het mandje onder de limiet blijft.
+    report("Budget controleren")
     trimmed: list[dict] = []
     raw_total = matcher.cart_total_cents(match["matched"])
     max_cents = int(config.max_order_eur * 100)
@@ -135,6 +147,7 @@ def build_proposal(
 
     total = matcher.cart_total_cents(match["matched"])
 
+    report("Bezorgmomenten ophalen bij Picnic")
     slots = parse_slots(picnic.get_delivery_slots())
 
     return {
