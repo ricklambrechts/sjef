@@ -4,7 +4,8 @@ Voor elk hoofdingrediënt (met grammen) zoekt dit het bijbehorende Picnic-produc
 haalt de voedingswaarde per 100 g op (nutrition_lookup, gecachet) en rekent uit:
     ingrediënt-kcal   = gram/100 × kcal_per_100g
     ingrediënt-eiwit  = gram/100 × eiwit_per_100g
-De maaltijd-totalen worden de SOM hiervan (vervangt Claude's schatting); dag-
+    ingrediënt-koolhydraten = gram/100 × koolhydraten_per_100g
+De maaltijd-totalen worden de SOM hiervan (vervangt de schatting van het taalmodel); dag-
 totalen worden de som van de maaltijden. Ingrediënten zonder voedingstabel
 (bv. vers fruit) houden None en de maaltijd valt voor dat deel terug op schatting.
 """
@@ -154,4 +155,65 @@ def enrich(
                 for p, v in day_pp.items()
             }
 
+    _add_carbohydrates(plan, nmap, persons)
     return plan
+
+
+def _add_carbohydrates(plan: dict, nmap: dict, persons: list[str]) -> None:
+    """Tel koolhydraten op zonder ontbrekende etiketwaarden als nul te behandelen."""
+
+    def total(values):
+        return (
+            round(sum(values), 1)
+            if values and all(v is not None for v in values)
+            else None
+        )
+
+    for day in plan.get("dagen", []):
+        day_values = {p: [] for p in persons}
+        day_totals = []
+        for meal in day.get("maaltijden", []):
+            meal_values = {p: [] for p in persons}
+            ingredient_totals = []
+            for ing in meal.get("ingredienten", []) or []:
+                term = (ing.get("zoekterm") or ing.get("naam") or "").strip()
+                per100g = (nmap.get(term, {}).get("per100g") or {}).get(
+                    "koolhydraten_g"
+                )
+
+                def portion(grams, per100g=per100g):
+                    if grams == 0:
+                        return 0.0
+                    return grams / 100 * per100g if per100g is not None else None
+
+                amount = portion(_ingredient_total_gram(ing))
+                ing["koolhydraten_g"] = round(amount, 1) if amount is not None else None
+                ingredient_totals.append(amount)
+                grams = _person_grams(ing, persons)
+                if persons:
+                    ing["per_persoon"] = ing.get("per_persoon") or {}
+                for name, g in grams.items():
+                    value = portion(g)
+                    cell = ing["per_persoon"].setdefault(
+                        name, {"gram": round(g), "kcal": None, "eiwit_g": None}
+                    )
+                    cell["koolhydraten_g"] = (
+                        round(value, 1) if value is not None else None
+                    )
+                    meal_values[name].append(value)
+            meal["ingr_koolhydraten_g"] = total(ingredient_totals)
+            day_totals.extend(ingredient_totals or [None])
+            if persons:
+                meal.setdefault("per_persoon", {})
+            for name in persons:
+                cell = meal["per_persoon"].setdefault(
+                    name, {"kcal": None, "eiwit_g": None}
+                )
+                cell["koolhydraten_g"] = total(meal_values[name])
+                day_values[name].extend(meal_values[name] or [None])
+        day["ingr_koolhydraten_g"] = total(day_totals)
+        if persons:
+            day.setdefault("per_persoon", {})
+        for name in persons:
+            cell = day["per_persoon"].setdefault(name, {"kcal": None, "eiwit_g": None})
+            cell["koolhydraten_g"] = total(day_values[name])

@@ -77,7 +77,7 @@ def shortlist(
     Picnic's zoekrelevantie is semantisch goed (zoek 'ui' -> 'Gele uien' eerst,
     'honing' -> echte honing eerst). We respecteren die volgorde i.p.v. te
     hersorteren met een eigen woord-heuristiek (die juist chips/sauzen/zeep met
-    het woord naar boven haalde). Claude maakt daarna de correcte eindkeuze.
+    het woord naar boven haalde). het taalmodel maakt daarna de correcte eindkeuze.
     Alleen filteren op een geldige prijs onder het per-item plafond.
     """
     out: list[dict] = []
@@ -247,7 +247,7 @@ def _matched_entry(item: dict, cand: dict, count: int) -> dict:
 def assemble_from_choices(
     items_with_candidates: list[dict], choices: list[dict]
 ) -> dict:
-    """Bouw matched/unmatched uit Claude's keuzes.
+    """Bouw matched/unmatched uit de keuzes van het taalmodel.
 
     choices: [{index, product_id, aantal}]. product_id=None -> unmatched.
     Valt per item terug op de beste kandidaat als de index/id niet klopt.
@@ -263,7 +263,7 @@ def assemble_from_choices(
             count = choice.get("aantal", item["geschat_aantal"])
             matched.append(_matched_entry(item, cand, count))
         elif choice and choice.get("product_id") is None:
-            # Claude vond bewust geen passend product (bv. alleen afgeleide
+            # het taalmodel vond bewust geen passend product (bv. alleen afgeleide
             # producten zoals saus/zeep). Eerlijk als 'niet gevonden' melden i.p.v.
             # iets verkeerds bestellen.
             unmatched.append(
@@ -278,7 +278,7 @@ def assemble_from_choices(
 
 
 def assemble_heuristic(items_with_candidates: list[dict]) -> dict:
-    """Fallback zonder Claude: kies per item de beste (eerste) shortlist-kandidaat."""
+    """Fallback zonder het taalmodel: kies per item de beste (eerste) shortlist-kandidaat."""
     matched = [
         _matched_entry(item, item["candidates"][0], item["geschat_aantal"])
         for item in items_with_candidates

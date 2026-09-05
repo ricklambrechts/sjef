@@ -7,7 +7,7 @@ eiwit) en dieetvoorkeuren, matcht de boodschappen bij **Picnic**, berekent de
 echte macro's per persoon uit de productlabels, en zet — **na jouw goedkeuring** —
 het mandje klaar.
 
-Het maaltijdplan komt van de **Claude API**; de boodschappen lopen via de
+Het maaltijdplan komt van **Codex met je eigen ChatGPT-login of API-key, of Claude via de Anthropic API**; de boodschappen lopen via de
 (onofficiële) Picnic-API.
 
 **Twee interfaces, kies wat je wilt:**
@@ -57,12 +57,20 @@ worden dus nooit per ongeluk gedeeld.
 | Variabele | Verplicht? | Hoe kom je eraan |
 |---|---|---|
 | `PICNIC_USERNAME` / `PICNIC_PASSWORD` | ✅ | je Picnic-inlog |
-| `ANTHROPIC_API_KEY` | ✅ | console.anthropic.com → API keys |
+| `CODEX_MODEL` | ⬜ optioneel | leeg laten voor het standaard Codex-model |
+| `CODEX_API_KEY` | ⬜ optioneel | API-key voor Codex; krijgt voorrang op ChatGPT-login |
+| `ANTHROPIC_API_KEY` | voor Claude | je Anthropic API-key |
+| `ANTHROPIC_MODEL` | ⬜ optioneel | standaard `claude-sonnet-4-6` |
 | `TELEGRAM_BOT_TOKEN` | ⬜ optioneel | alleen voor de bot: [@BotFather](https://t.me/BotFather) → `/newbot` |
 | `TELEGRAM_ALLOWED_USER_ID` | ⬜ optioneel | alleen voor de bot: je id via [@userinfobot](https://t.me/userinfobot) |
 | `DRY_RUN` | — | laat op `true` tot je het vertrouwt |
 
 Wil je **alleen het dashboard**? Dan heb je de twee Telegram-velden niet nodig.
+
+### AI koppelen
+
+Zie [AI koppelen](docs/ai-koppelen.md) voor Codex met een API-key, inloggen met
+ChatGPT en het kiezen van een provider, waaronder Claude.
 
 ### Eenmalig inloggen bij Picnic (2FA)
 ```bash
@@ -70,6 +78,21 @@ uv run sjef picnic-login
 ```
 Dit handelt de SMS-code af en slaat een auth-token op in `state/`, zodat je
 daarna zonder 2FA werkt.
+
+### Voortgang van plannen
+
+Het dashboard start het plannen in een apart achtergrondproces. Je ziet de
+actuele stap en verstreken tijd; de status wordt elke twee seconden vernieuwd.
+Je kunt de pagina herladen of sluiten: de taak loopt door zolang de computer
+blijft draaien. Een nieuwe browsersessie vindt de taak en het resultaat terug.
+Er draait maximaal één dashboardplanning tegelijk per installatie.
+
+De laatste taak en het gegenereerde voorstel staan in `state/planning.sqlite`.
+Fouten blijven zichtbaar en een taak heeft een totale tijdslimiet van 20 minuten.
+Na een onderbreking kun je opnieuw plannen. Technische foutdetails staan in
+`state/planning-worker.log`. Deze bestanden bevatten persoonlijke plangegevens
+of foutdetails en staan, net als de rest van `state/`, buiten Git.
+Lokale bewerkingen aan een getoond voorstel blijven browsersessiegebonden.
 
 ### Persoonlijke voorkeuren
 Stel personen, macro-doelen, huishouden en budget in **via het dashboard**
@@ -179,10 +202,18 @@ src/sjef/
     picnic_client.py   Picnic-API en bestellen
     login_setup.py     inloggen met 2FA
     nutrition_lookup.py  voedingswaarden van Picnic-producten
+  llm/
+    __init__.py        LLM Protocol met generate_json(system, prompt, schema)
+    factory.py         providerkeuze en authenticatie
+    codex.py           officiële Codex Python-SDK en JSON-validatie
+    anthropic.py       officiële Anthropic SDK en JSON-validatie
+    codex_auth.py      ChatGPT-login, accountstatus en uitloggen via de SDK
   planning/
-    planner.py         weekmenu genereren met Claude
+    planner.py         provider-onafhankelijke prompts en JSON-schema’s
     matcher.py         boodschappen aan producten koppelen
     orchestrator.py    voorstellen opbouwen en bestellingen uitvoeren
+    jobs.py            opgeslagen taakstatus en processtart
+    worker.py          achtergrondplanning met tijdslimiet
     meal_macros.py     macro’s per maaltijd berekenen
   household/
     profiles.py        huishoudprofielen laden en bewaren
@@ -211,13 +242,18 @@ uv run pytest
 uv run sjef selftest
 ```
 
+Zie [Een andere LLM toevoegen](docs/llm-provider-toevoegen.md) voor het uitbreiden
+van de beschikbare providers.
+
 ## Wat is getest
 
 - Python 3.13+ is vereist voor de Picnic-library met 2FA-ondersteuning.
 - CI draait de tests met pytest en de offline selftests op Python 3.13 en 3.14.
 - `uv run sjef selftest` dekt de pure logica: config-laden, productkeuze-heuristiek,
   plan-validatie, slot-parsing en opmaak — **zonder** netwerk of credentials.
-- De live-paden (Picnic-login/zoeken/bestellen, Claude-call, Telegram) vereisen
+- De tests controleren ook de SDK-koppeling, JSON-validatie, login/uitloggen,
+  de dashboardflow en een accountcontrole met de echte meegeleverde runtime.
+- De live-paden (Picnic-login/zoeken/bestellen, LLM-modelaanroepen, Telegram) vereisen
   je eigen accounts en zijn daarom niet automatisch getest. Begin met `DRY_RUN=true`
   en `uv run sjef plan` om het end-to-end te zien zonder te bestellen.
 

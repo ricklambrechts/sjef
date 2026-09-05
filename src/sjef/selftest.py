@@ -137,7 +137,10 @@ def run_selftest() -> int:
     asm = matcher.assemble_from_choices(
         items_wc, [{"index": 0, "product_id": "mini", "aantal": 3}]
     )
-    check("kiest het door Claude gekozen product", asm["matched"][0]["id"] == "mini")
+    check(
+        "kiest het door het taalmodel gekozen product",
+        asm["matched"][0]["id"] == "mini",
+    )
     check("neemt aantal over", asm["matched"][0]["count"] == 3)
     check(
         "voorraadkast-vlag doorgegeven (false)",

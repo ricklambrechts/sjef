@@ -1,146 +1,139 @@
-"""Maaltijdplanner op basis van de Claude API.
+"""Provider-onafhankelijke maaltijdplanner.
 
 Genereert een weekmenu afgestemd op macro-doelen, dieetprofiel en huishouden,
 en levert een geconsolideerde boodschappenlijst met zoektermen voor Picnic.
 
-Gebruikt forced tool-use zodat we gegarandeerd geldige JSON terugkrijgen, en
-prompt caching op de (statische) system prompt om kosten te drukken.
+Prompts en JSON-schema’s beschrijven het gewenste resultaat. Een geïnjecteerde
+LLM-provider verzorgt de modelaanroep en authenticatie.
 """
 
 from __future__ import annotations
 
 import logging
 
-from anthropic import Anthropic
-
 from sjef.config import Config
 from sjef.household.nutrition import NUTRITION_PRINCIPLES
+from sjef.llm import LLM
 
 log = logging.getLogger(__name__)
 
-# JSON-schema dat Claude MOET invullen (forced tool use).
-PLAN_TOOL = {
-    "name": "weekmenu",
-    "description": "Lever het weekmenu en de boodschappenlijst in dit formaat.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "samenvatting": {
-                "type": "string",
-                "description": "Korte samenvatting van het weekplan (1-3 zinnen).",
-            },
-            "dagen": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "dag": {"type": "string"},
-                        "maaltijden": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "naam": {"type": "string"},
-                                    "type": {
-                                        "type": "string",
-                                        "enum": ["ontbijt", "lunch", "diner", "snack"],
-                                    },
-                                    "kcal": {"type": "integer"},
-                                    "eiwit_g": {"type": "integer"},
-                                    "ingredienten": {
-                                        "type": "array",
-                                        "description": "De hoofdingrediënten van deze maaltijd. Geef per ingrediënt "
-                                        "de hoeveelheid in gram/ml PER PERSOON (porties), zodat de macro's per persoon "
-                                        "exact berekend kunnen worden.",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "naam": {
-                                                    "type": "string",
-                                                    "description": "Ingrediënt, bv. 'Magere kwark'.",
-                                                },
-                                                "zoekterm": {
-                                                    "type": "string",
-                                                    "description": "Korte, generieke zoekterm voor Picnic.",
-                                                },
-                                                "porties": {
-                                                    "type": "array",
-                                                    "description": "Hoeveelheid in gram/ml per persoon. Gebruik exact de "
-                                                    "namen van de personen. Eet iemand dit ingrediënt niet, geef 0.",
-                                                    "items": {
-                                                        "type": "object",
-                                                        "properties": {
-                                                            "persoon": {
-                                                                "type": "string"
-                                                            },
-                                                            "gram": {"type": "number"},
-                                                        },
-                                                        "required": ["persoon", "gram"],
+# Provider-onafhankelijk JSON-schema voor het weekmenu.
+PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "samenvatting": {
+            "type": "string",
+            "description": "Korte samenvatting van het weekplan (1-3 zinnen).",
+        },
+        "dagen": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "dag": {"type": "string"},
+                    "maaltijden": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "naam": {"type": "string"},
+                                "type": {
+                                    "type": "string",
+                                    "enum": ["ontbijt", "lunch", "diner", "snack"],
+                                },
+                                "kcal": {"type": "integer"},
+                                "eiwit_g": {"type": "integer"},
+                                "ingredienten": {
+                                    "type": "array",
+                                    "description": "De hoofdingrediënten van deze maaltijd. Geef per ingrediënt "
+                                    "de hoeveelheid in gram/ml PER PERSOON (porties), zodat de macro's per persoon "
+                                    "exact berekend kunnen worden.",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "naam": {
+                                                "type": "string",
+                                                "description": "Ingrediënt, bv. 'Magere kwark'.",
+                                            },
+                                            "zoekterm": {
+                                                "type": "string",
+                                                "description": "Korte, generieke zoekterm voor Picnic.",
+                                            },
+                                            "porties": {
+                                                "type": "array",
+                                                "description": "Hoeveelheid in gram/ml per persoon. Gebruik exact de "
+                                                "namen van de personen. Eet iemand dit ingrediënt niet, geef 0.",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "persoon": {"type": "string"},
+                                                        "gram": {"type": "number"},
                                                     },
+                                                    "required": ["persoon", "gram"],
                                                 },
                                             },
-                                            "required": ["naam", "zoekterm", "porties"],
                                         },
+                                        "required": ["naam", "zoekterm", "porties"],
                                     },
                                 },
-                                "required": [
-                                    "naam",
-                                    "type",
-                                    "kcal",
-                                    "eiwit_g",
-                                    "ingredienten",
-                                ],
                             },
-                        },
-                        "totaal_kcal": {"type": "integer"},
-                        "totaal_eiwit_g": {"type": "integer"},
-                    },
-                    "required": ["dag", "maaltijden", "totaal_kcal", "totaal_eiwit_g"],
-                },
-            },
-            "boodschappenlijst": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "item": {
-                            "type": "string",
-                            "description": "Productnaam, bv. 'Kipfilet'",
-                        },
-                        "zoekterm": {
-                            "type": "string",
-                            "description": "Zoekterm voor de Picnic-app, kort en generiek.",
-                        },
-                        "hoeveelheid": {
-                            "type": "string",
-                            "description": "Benodigde hoeveelheid voor de hele week, bv. '1.4 kg' of '12 stuks'.",
-                        },
-                        "geschat_aantal": {
-                            "type": "integer",
-                            "description": "Hoeveel verpakkingen er ongeveer nodig zijn.",
-                            "minimum": 1,
-                        },
-                        "categorie": {"type": "string"},
-                        "voorraadkast": {
-                            "type": "boolean",
-                            "description": "True voor lang houdbare basics die mensen meestal al in huis "
-                            "hebben: kruiden, specerijen, sauzen, olie, azijn, bouillon, mosterd, honing, "
-                            "zout/peper, bakproducten. False voor verse/wekelijkse producten (vlees, vis, "
-                            "zuivel, groente, fruit, brood, granen).",
+                            "required": [
+                                "naam",
+                                "type",
+                                "kcal",
+                                "eiwit_g",
+                                "ingredienten",
+                            ],
                         },
                     },
-                    "required": [
-                        "item",
-                        "zoekterm",
-                        "hoeveelheid",
-                        "geschat_aantal",
-                        "voorraadkast",
-                    ],
+                    "totaal_kcal": {"type": "integer"},
+                    "totaal_eiwit_g": {"type": "integer"},
                 },
+                "required": ["dag", "maaltijden", "totaal_kcal", "totaal_eiwit_g"],
             },
         },
-        "required": ["samenvatting", "dagen", "boodschappenlijst"],
+        "boodschappenlijst": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "item": {
+                        "type": "string",
+                        "description": "Productnaam, bv. 'Kipfilet'",
+                    },
+                    "zoekterm": {
+                        "type": "string",
+                        "description": "Zoekterm voor de Picnic-app, kort en generiek.",
+                    },
+                    "hoeveelheid": {
+                        "type": "string",
+                        "description": "Benodigde hoeveelheid voor de hele week, bv. '1.4 kg' of '12 stuks'.",
+                    },
+                    "geschat_aantal": {
+                        "type": "integer",
+                        "description": "Hoeveel verpakkingen er ongeveer nodig zijn.",
+                        "minimum": 1,
+                    },
+                    "categorie": {"type": "string"},
+                    "voorraadkast": {
+                        "type": "boolean",
+                        "description": "True voor lang houdbare basics die mensen meestal al in huis "
+                        "hebben: kruiden, specerijen, sauzen, olie, azijn, bouillon, mosterd, honing, "
+                        "zout/peper, bakproducten. False voor verse/wekelijkse producten (vlees, vis, "
+                        "zuivel, groente, fruit, brood, granen).",
+                    },
+                },
+                "required": [
+                    "item",
+                    "zoekterm",
+                    "hoeveelheid",
+                    "geschat_aantal",
+                    "voorraadkast",
+                ],
+            },
+        },
     },
+    "required": ["samenvatting", "dagen", "boodschappenlijst"],
 }
 
 
@@ -175,6 +168,12 @@ def _budget_block(target_eur: float | None, cost_conscious: bool) -> list[str]:
             f"niet meer dan nodig voor de porties en het aantal personen."
         )
     if cost_conscious:
+        lines.append(
+            "KOSTENBEWUST BOODSCHAPPEN: geef bij vergelijkbare producten de voorkeur "
+            "aan huismerk boven A-merken en premiumvarianten. Gebruik merkneutrale zoektermen "
+            "zodat goedkopere alternatieven vindbaar blijven, tenzij de gebruiker expliciet "
+            "een merk vraagt."
+        )
         lines.append(
             "KOSTENBEWUST EIWIT: haal het eiwit NADRUKKELIJK uit een mix, met een groot "
             "deel uit GOEDKOPE NIET-VLEES bronnen: magere kwark, skyr, Griekse yoghurt, "
@@ -268,7 +267,7 @@ def build_profiles_prompt(
         "porties zo af dat ELKE persoon zijn eigen dagdoel (kcal én eiwit) haalt. Deze "
         "hoeveelheden worden gebruikt om de echte macro's per persoon te berekenen, dus "
         "wees realistisch en consistent met de genoemde kcal/eiwit.",
-        "Lever het resultaat via de tool 'weekmenu'.",
+        "Lever het weekmenu als JSON volgens het opgegeven schema.",
     ]
     return "\n".join(lines)
 
@@ -306,19 +305,18 @@ def build_user_prompt(
     budget = _budget_block(config.budget_target_eur, config.cost_conscious)
     if budget:
         lines += [""] + budget
-    lines.append("Lever het resultaat via de tool 'weekmenu'.")
+    lines.append("Lever het weekmenu als JSON volgens het opgegeven schema.")
     return "\n".join(lines)
 
 
 def generate_plan(
     config: Config,
     mode: str,
-    api_key: str,
-    model: str,
+    llm: LLM,
     request: str | None = None,
     profiles_ctx: dict | None = None,
 ) -> dict:
-    """Roept Claude aan en geeft het gevalideerde plan-dict terug.
+    """Roept de LLM-provider aan en geeft het gevalideerde plan-dict terug.
 
     `request` is een optionele vrije-tekst-opdracht (bv. '4x avondeten voor 4
     personen, 2 lunches voor 2, 3 gezonde snacks').
@@ -338,35 +336,11 @@ def generate_plan(
         macros = config.macros_for(mode)
         user_prompt = build_user_prompt(config, mode, macros, request)
 
-    client = Anthropic(api_key=api_key)
-    # Streaming: nodig bij een hoog max_tokens (de SDK weigert anders een
-    # non-streaming request die >10 min zou kunnen duren). Ruim budget omdat de
-    # output met ingrediënten per maaltijd groter is; je betaalt alleen wat echt
-    # gebruikt wordt.
-    with client.messages.stream(
-        model=model,
-        max_tokens=24000,
-        system=[
-            {
-                "type": "text",
-                "text": build_system_prompt(),
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        tools=[PLAN_TOOL],
-        tool_choice={"type": "tool", "name": "weekmenu"},
-        messages=[{"role": "user", "content": user_prompt}],
-    ) as stream:
-        resp = stream.get_final_message()
-    if resp.stop_reason == "max_tokens":
-        raise RuntimeError(
-            "Het menu werd te lang en is afgekapt vóór de boodschappenlijst af was. "
-            "Verklein het verzoek (minder dagen/maaltijden) of verhoog max_tokens."
+    return validate_plan(
+        llm.generate_json(
+            system=build_system_prompt(), prompt=user_prompt, schema=PLAN_SCHEMA
         )
-    for block in resp.content:
-        if block.type == "tool_use" and block.name == "weekmenu":
-            return validate_plan(block.input)
-    raise RuntimeError("Claude gaf geen geldig weekmenu terug.")
+    )
 
 
 def validate_plan(plan: dict) -> dict:
@@ -384,41 +358,37 @@ def validate_plan(plan: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Productkeuze: laat Claude per item het beste Picnic-product kiezen uit een
+# Productkeuze: laat het taalmodel per item het beste Picnic-product kiezen uit een
 # shortlist (betere keuzes dan puur 'goedkoopst': let op pakgrootte vs. de
 # benodigde weekhoeveelheid, prijs-per-kilo en naam-relevantie).
 # ---------------------------------------------------------------------------
-CHOOSE_TOOL = {
-    "name": "productkeuzes",
-    "description": "Kies per boodschap het beste Picnic-product uit de kandidaten.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "keuzes": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "index": {
-                            "type": "integer",
-                            "description": "Index van het boodschap-item.",
-                        },
-                        "product_id": {
-                            "type": ["string", "null"],
-                            "description": "Gekozen product-id, of null als geen kandidaat past.",
-                        },
-                        "aantal": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "description": "Hoeveel verpakkingen kopen voor de benodigde weekhoeveelheid.",
-                        },
+CHOOSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "keuzes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {
+                        "type": "integer",
+                        "description": "Index van het boodschap-item.",
                     },
-                    "required": ["index", "product_id", "aantal"],
+                    "product_id": {
+                        "type": ["string", "null"],
+                        "description": "Gekozen product-id, of null als geen kandidaat past.",
+                    },
+                    "aantal": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Hoeveel verpakkingen kopen voor de benodigde weekhoeveelheid.",
+                    },
                 },
-            }
-        },
-        "required": ["keuzes"],
+                "required": ["index", "product_id", "aantal"],
+            },
+        }
     },
+    "required": ["keuzes"],
 }
 
 
@@ -438,9 +408,9 @@ def _candidate_block(items_with_candidates: list[dict]) -> str:
 
 
 def choose_products(
-    items_with_candidates: list[dict], api_key: str, model: str
+    items_with_candidates: list[dict], llm: LLM, *, cost_conscious: bool = False
 ) -> list[dict]:
-    """Laat Claude per item het beste product + aantal kiezen. Eén batch-call."""
+    """Laat het taalmodel per item het beste product + aantal kiezen. Eén batch-call."""
     if not items_with_candidates:
         return []
     system = (
@@ -458,22 +428,19 @@ def choose_products(
         "Merk- en bio-varianten van het juiste product zijn prima. Pas als er ECHT geen "
         "product is dat het item zelf is (alleen afgeleide producten), kies product_id=null."
     )
+    if cost_conscious:
+        system += (
+            " HUISMERKVOORKEUR: kies bij vergelijkbare geschikte producten bij voorkeur "
+            "huismerk (zoals herkenbaar Picnic-huismerk) boven A-merken, biologisch en "
+            "premium. Leid huismerk alleen af uit de aangeboden productinformatie; "
+            "verzin geen merken of producten. Vergelijk de prijs per kilo/liter én de "
+            "totale kosten van de benodigde verpakkingen: kies een A-merk als dat voor "
+            "de benodigde hoeveelheid voordeliger is. Koop geen onnodig overschot. "
+            "Respecteer de gevraagde producteigenschappen en een expliciete merkvoorkeur."
+        )
     user = (
         "Kies per item (op index) het beste product en het aantal verpakkingen.\n\n"
         + _candidate_block(items_with_candidates)
     )
-    client = Anthropic(api_key=api_key)
-    resp = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=[
-            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
-        ],
-        tools=[CHOOSE_TOOL],
-        tool_choice={"type": "tool", "name": "productkeuzes"},
-        messages=[{"role": "user", "content": user}],
-    )
-    for block in resp.content:
-        if block.type == "tool_use" and block.name == "productkeuzes":
-            return block.input.get("keuzes", [])
-    return []
+    result = llm.generate_json(system=system, prompt=user, schema=CHOOSE_SCHEMA)
+    return result["keuzes"]
