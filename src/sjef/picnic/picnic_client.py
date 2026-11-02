@@ -88,6 +88,16 @@ class PicnicClient:
     def get_cart(self) -> dict:
         return self.api.get_cart().raw
 
+    def get_promotions(self) -> list[dict]:
+        """Actuele acties lezen via dezelfde storefront-sessie als search()."""
+        from sjef.picnic.promotions import parse_promotions
+
+        return parse_promotions(
+            self.api._get(
+                "/pages/promo-page-all-promos-redirect", add_picnic_headers=True
+            )
+        )
+
     def get_delivery_slots(self) -> dict:
         return self.api.get_delivery_slots().raw
 

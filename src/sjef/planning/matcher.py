@@ -113,7 +113,12 @@ def _fallback_terms(term: str) -> list[str]:
 
 
 def gather_candidates(
-    picnic, shopping_list: list[dict], max_item_eur: float, top_n: int = 10
+    picnic,
+    shopping_list: list[dict],
+    max_item_eur: float,
+    top_n: int = 10,
+    *,
+    preferred_ids: set[str] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Zoek per item kandidaten op. Geeft (items_met_kandidaten, geen_resultaat).
 
@@ -137,6 +142,18 @@ def gather_candidates(
                 log.warning("Zoeken naar '%s' mislukt: %s", candidate_term, exc)
                 continue
             found = shortlist(results, candidate_term, max_item_cents, top_n)
+            if preferred_ids:
+                # Bewaar bekende acties én vergelijkbare huismerken buiten de top_n,
+                # uitsluitend als ze opnieuw gevonden worden, met hun actuele prijs.
+                known = {c["id"] for c in found}
+                extra = [
+                    p
+                    for p in flatten_results(results)
+                    if str(p.get("id")) in preferred_ids
+                    and str(p.get("id")) not in known
+                    and p.get("max_count") != 0
+                ]
+                found += shortlist(extra, candidate_term, max_item_cents, len(extra))
             if found:
                 cands = found
                 used_term = candidate_term

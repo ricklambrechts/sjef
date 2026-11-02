@@ -23,6 +23,7 @@ from sjef.config import Config, Secrets
 from sjef.household import nutrition
 from sjef.household.profiles import Profiles
 from sjef.interfaces.plan_status import planning_jobs, render_planning_controls
+from sjef.interfaces.week_menu import render_week_menu
 from sjef.picnic.picnic_client import PicnicClient
 from sjef.planning import orchestrator
 
@@ -233,6 +234,8 @@ with tab_plan:
             else "👋 Nog geen plan. Druk op **‘Sjef, maak een plan’** en ik regel je week."
         )
     else:
+        if proposal.get("offers_message"):
+            st.info(proposal["offers_message"])
         persons = proposal.get("persons") or []
         if persons:
             cols = st.columns(len(persons))
@@ -247,81 +250,7 @@ with tab_plan:
         if proposal["plan"].get("samenvatting"):
             st.caption(proposal["plan"]["samenvatting"])
 
-        def carbs(values):
-            value = values.get("koolhydraten_g")
-            return f"{value}g koolhydraten" if value is not None else "— koolhydraten"
-
-        def macro_summary(values):
-            kcal = values.get("kcal")
-            protein = values.get("eiwit_g")
-            return (
-                f"{kcal if kcal is not None else '—'} kcal / "
-                f"{protein if protein is not None else '—'}g eiwit / {carbs(values)}"
-            )
-
-        person_names = [p["name"] for p in persons]
-
-        st.subheader("📋 Menu")
-        st.caption(
-            "Macro's per ingrediënt/persoon zijn berekend uit de echte Picnic-"
-            "voedingswaarden. Let op: verse producten zonder voedingstabel (‘—’, bv. "
-            "groente/fruit) tellen NIET mee — kcal en eiwit kunnen daardoor onvolledig zijn. Onbekende koolhydraattotalen tonen we als ‘—’."
-        )
-        for day in proposal["plan"].get("dagen", []):
-            # Per-persoon dagtotalen in de koptekst (echte berekende waarden).
-            day_pp = day.get("per_persoon") or {}
-            head = f"{day.get('dag', '?')}"
-            if day_pp:
-                head += " — " + " · ".join(
-                    f"{name}: {macro_summary(day_pp[name])}"
-                    for name in person_names
-                    if name in day_pp
-                )
-            else:
-                head += f" — {day.get('totaal_kcal', '?')} kcal / {day.get('totaal_eiwit_g', '?')}g eiwit / {carbs({'koolhydraten_g': day.get('ingr_koolhydraten_g')})}"
-            with st.expander(head):
-                for m in day.get("maaltijden", []):
-                    st.markdown(
-                        f"**{str(m.get('type', '')).capitalize()}** — {m.get('naam', '')}"
-                    )
-                    # Per-persoon maaltijdtotalen.
-                    mpp = m.get("per_persoon") or {}
-                    if mpp:
-                        st.caption(
-                            "  ·  ".join(
-                                f"**{name}**: {macro_summary(mpp[name])}"
-                                for name in person_names
-                                if name in mpp
-                            )
-                        )
-                    else:
-                        st.caption(
-                            carbs({"koolhydraten_g": m.get("ingr_koolhydraten_g")})
-                        )
-                    ings = m.get("ingredienten") or []
-                    if ings:
-                        rows = []
-                        for i in ings:
-                            row = {
-                                "Ingrediënt": i.get("naam", ""),
-                                "Gram (tot.)": i.get("gram", ""),
-                            }
-                            pp = i.get("per_persoon") or {}
-                            for name in person_names:
-                                cell = pp.get(name)
-                                row[name] = (
-                                    f"{cell['gram']}g · {macro_summary(cell)}"
-                                    if cell
-                                    else "—"
-                                )
-                            row["Koolhydraten (tot.)"] = carbs(i)
-                            row["Picnic-product"] = i.get("bron_product") or "—"
-                            rows.append(row)
-                        st.dataframe(
-                            pd.DataFrame(rows),
-                            hide_index=True,
-                            use_container_width=True,
-                        )
+        render_week_menu(proposal["plan"], [p["name"] for p in persons])
 
         # Voorraadkast-items (kruiden/sauzen/olie): vraag of je ze al in huis hebt.
         pantry = [m for m in proposal["matched"] if m.get("voorraadkast")]
@@ -595,6 +524,15 @@ with tab_settings:
         value=config.cost_conscious,
         help="Eiwit ook uit goedkope bronnen (kwark, eieren, peulvruchten)",
     )
+    use_offers = bc3.checkbox(
+        "Aanbiedingen meenemen",
+        value=config.use_offers,
+        help=(
+            "Vaker koken met aanbiedingen die per kilo, liter of stuk goedkoper "
+            "zijn dan vergelijkbaar huismerk. Onduidelijke acties en stapelkortingen "
+            "worden overgeslagen."
+        ),
+    )
 
     if st.button("💾 Instellingen opslaan", type="primary"):
         new_persons = []
@@ -642,6 +580,7 @@ with tab_settings:
             cfg.raw.setdefault("limits", {})["max_order_eur"] = float(max_order)
             cfg.raw.setdefault("budget", {})["target_eur"] = float(target)
             cfg.raw["budget"]["cost_conscious"] = bool(cost_conscious)
+            cfg.raw["budget"]["use_offers"] = bool(use_offers)
             cfg.save()
             st.success(
                 "✅ Opgeslagen! De volgende ‘Genereer plan’ gebruikt de nieuwe instellingen."

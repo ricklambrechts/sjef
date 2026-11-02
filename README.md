@@ -153,14 +153,33 @@ gerechten met aangepaste porties, en past universele voedingsprincipes toe
 koolhydraat-timing rond training). Die kennislaag staat in `src/sjef/household/nutrition.py`.
 
 ### Budget & kosten
-In `config.yaml` staan twee budget-mechanismen:
+In `config.yaml` staan de volgende budgetinstellingen:
+
 - `budget.target_eur` — streefbedrag dat de planner meekrijgt (mikt hieronder).
 - `budget.cost_conscious: true` — laat de planner eiwit halen uit een mix met een
   groot deel goedkope niet-vlees bronnen (kwark, skyr, eieren, peulvruchten, tofu),
   vlees/vis als aanvulling. Dit is de grootste echte besparing.
+- `budget.use_offers: true` — neemt actuele Picnic-aanbiedingen mee vóór het
+  samenstellen van recepten. Ook los van ‘Kostenbewust’ inschakelbaar via
+  **Instellingen → Budget → Aanbiedingen meenemen** (standaard uit).
 - `limits.max_order_eur` — harde bovengrens. De **budget-trimstap**
   (`matcher.trim_to_budget`) snoeit een te ruim mandje deterministisch terug tot
   onder dit bedrag (duurste over-ingekochte regels eerst), en toont wat eraf ging.
+
+Aanbiedingen krijgen alleen voorkeur als ze per kilo, liter of stuk strikt
+goedkoper zijn dan het goedkoopste gevonden vergelijkbare huismerk. AI selecteert
+maximaal 20 relevante ingrediënten en herkent vergelijkbare huismerkproducten;
+de prijsvergelijking wordt in code berekend. Voedingsdoelen, dieet en voorkeuren
+blijven leidend. Bij de uiteindelijke productkeuze telt ook de totale prijs voor
+het benodigde aantal verpakkingen mee.
+
+Deze optie gebruikt enkelstuksacties met een duidelijke actieprijs, oude prijs
+en verpakkingsinhoud. Stapelkortingen zoals ‘1+1 gratis’, variabele gewichten en
+aanbiedingen zonder herkenbaar vergelijkbaar huismerk worden overgeslagen.
+Er zijn maximaal twee extra AI-aanroepen en twintig zoekopdrachten nodig.
+Als ophalen of vergelijken mislukt, gaat de planning door met een melding in
+het voorstel. Acties worden tijdens het plannen opgehaald; hun geldigheid op de
+bezorgdag wordt niet gecontroleerd.
 
 Realistische richtlijn: volledige hoog-eiwit voeding (alle maaltijden) voor 2
 personen kost ~€240/week. Zet de harde limiet niet té laag — de trim is blind voor

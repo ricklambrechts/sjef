@@ -41,6 +41,7 @@ limits:
 budget:
   target_eur: 130            # streefbedrag dat de planner meekrijgt
   cost_conscious: true       # eiwit ook uit goedkope bronnen (kwark/ei/peulvr.)
+  use_offers: false          # recepten met acties die goedkoper zijn dan huismerk
 
 picnic:
   preferred_weekday: null

@@ -10,6 +10,7 @@ Twee fasen, bewust gescheiden zodat er nooit per ongeluk besteld wordt:
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from datetime import datetime
@@ -17,7 +18,7 @@ from datetime import datetime
 from sjef.config import Config, Secrets
 from sjef.household.profiles import Profiles
 from sjef.llm.factory import create_llm
-from sjef.planning import matcher, meal_macros, planner
+from sjef.planning import matcher, meal_macros, offers, planner
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,37 @@ def build_proposal(
         bool(request),
     )
     llm = create_llm(secrets, provider=config.llm_provider())
+    worthwhile_offers = []
+    offers_message = None
+    if config.use_offers:
+        report("Weekmenu genereren: aanbiedingen met huismerk vergelijken")
+        try:
+            worthwhile_offers = offers.find_worthwhile_offers(
+                picnic,
+                llm,
+                max_item_eur=config.max_item_eur,
+                context=json.dumps(
+                    {
+                        "profielen": profiles_ctx,
+                        "voorkeuren": config.raw,
+                        "verzoek": request,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+            offers_message = (
+                f"{len(worthwhile_offers)} aanbiedingen goedkoper dan vergelijkbaar "
+                "huismerk meegegeven aan de planner."
+                if worthwhile_offers
+                else "Geen aanbiedingen gevonden die aantoonbaar goedkoper zijn dan "
+                "vergelijkbaar huismerk; gepland zonder aanbiedingenvoorkeur."
+            )
+        except Exception:
+            log.warning("Aanbiedingen ophalen of vergelijken mislukt", exc_info=True)
+            offers_message = (
+                "Aanbiedingen konden niet worden opgehaald of vergeleken; "
+                "gepland zonder aanbiedingenvoorkeur."
+            )
     report("Weekmenu genereren met AI")
     plan = planner.generate_plan(
         config,
@@ -65,6 +97,7 @@ def build_proposal(
         llm=llm,
         request=request,
         profiles_ctx=profiles_ctx,
+        offers=worthwhile_offers,
     )
 
     # Echte macro's per ingrediënt + per persoon uit Picnic-labels.
@@ -112,7 +145,14 @@ def build_proposal(
     log.info("Producten zoeken bij Picnic (%d items)...", len(shopping))
     report(f"Boodschappen zoeken bij Picnic ({len(shopping)} producten)")
     with_candidates, no_result = matcher.gather_candidates(
-        picnic, shopping, config.max_item_eur
+        picnic,
+        shopping,
+        config.max_item_eur,
+        preferred_ids={
+            pid
+            for offer in worthwhile_offers
+            for pid in [offer["id"], *offer["house_brand_ids"]]
+        },
     )
 
     # LLM kiest per item het beste product (pakgrootte/prijs-per-kilo);
@@ -124,6 +164,7 @@ def build_proposal(
             with_candidates,
             llm=llm,
             cost_conscious=config.cost_conscious,
+            offers=worthwhile_offers,
         )
         match = matcher.assemble_from_choices(with_candidates, choices)
     except Exception as exc:
@@ -156,6 +197,8 @@ def build_proposal(
         "persons": persons_display,
         "request": request,
         "plan": plan,
+        "offers": worthwhile_offers,
+        "offers_message": offers_message,
         "matched": match["matched"],
         "unmatched": match["unmatched"],
         "trimmed": trimmed,

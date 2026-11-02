@@ -45,6 +45,8 @@ def _overview_lines(proposal: dict) -> list[str]:
     if plan.get("samenvatting"):
         lines.append("")
         lines.append(plan["samenvatting"])
+    if proposal.get("offers_message"):
+        lines.append(proposal["offers_message"])
     return lines
 
 

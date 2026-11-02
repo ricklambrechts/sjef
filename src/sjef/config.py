@@ -182,6 +182,10 @@ class Config:
         return bool(self.raw.get("budget", {}).get("cost_conscious", False))
 
     @property
+    def use_offers(self) -> bool:
+        return bool(self.raw.get("budget", {}).get("use_offers", False))
+
+    @property
     def preferred_weekday(self):
         return self.raw.get("picnic", {}).get("preferred_weekday")
 

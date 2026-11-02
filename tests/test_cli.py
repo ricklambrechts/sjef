@@ -7,6 +7,31 @@ from sjef import cli
 from sjef.picnic import login_setup
 
 
+def test_ai_login_uses_sdk_and_supports_device_code(capsys):
+    from sjef.llm.codex_auth import CodexAuth
+
+    with patch.object(CodexAuth, "start_login") as start:
+        login = start.return_value
+        login.url = "https://auth.openai.com/codex/device"
+        login.user_code = "ABCD-1234"
+        login.wait.return_value = True
+        assert cli.main(["ai-login", "--device-auth"]) == 0
+    start.assert_called_once_with(device_auth=True)
+    output = capsys.readouterr().out
+    assert "ABCD-1234" in output
+    assert "Ingelogd" in output
+
+
+def test_ai_login_error_returns_nonzero(capsys):
+    from sjef.llm.codex_auth import CodexAuth
+
+    with patch.object(
+        CodexAuth, "start_login", side_effect=RuntimeError("Login mislukt")
+    ):
+        assert cli.main(["ai-login"]) == 1
+    assert "Login mislukt" in capsys.readouterr().err
+
+
 class CliTests(unittest.TestCase):
     def test_picnic_login_subcommand_forwards_options(self):
         for options in (

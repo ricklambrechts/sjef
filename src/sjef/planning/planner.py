@@ -43,6 +43,12 @@ PLAN_SCHEMA = {
                                 },
                                 "kcal": {"type": "integer"},
                                 "eiwit_g": {"type": "integer"},
+                                "bereiding": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "items": {"type": "string", "minLength": 1},
+                                    "description": "Concrete bereidingsstappen in volgorde, zonder nummering; inclusief tijden en temperaturen waar nodig.",
+                                },
                                 "ingredienten": {
                                     "type": "array",
                                     "description": "De hoofdingrediënten van deze maaltijd. Geef per ingrediënt "
@@ -83,6 +89,7 @@ PLAN_SCHEMA = {
                                 "kcal",
                                 "eiwit_g",
                                 "ingredienten",
+                                "bereiding",
                             ],
                         },
                     },
@@ -140,6 +147,10 @@ PLAN_SCHEMA = {
 def build_system_prompt(include_principles: bool = True) -> str:
     base = (
         "Je bent een Nederlandse voedingscoach en meal-prep-planner. "
+        "Geef bij elke maaltijd een uitvoerbaar recept in bereiding, ook bij ontbijt en snacks. "
+        "Gebruik de opgegeven ingrediënten en porties; neem alle benodigde ingrediënten "
+        "(ook olie en kruiden) op bij de maaltijd én in de boodschappenlijst. "
+        "Beschrijf waar nodig hoe de porties per persoon worden verdeeld. "
         "Je stelt realistische, lekkere en gevarieerde weekmenu's samen die nauwkeurig "
         "aansluiten op opgegeven calorie- en eiwitdoelen. Je houdt je strikt aan dieet"
         "restricties en uitsluitingen. Producten kies je zo dat ze bij de Nederlandse "
@@ -315,6 +326,7 @@ def generate_plan(
     llm: LLM,
     request: str | None = None,
     profiles_ctx: dict | None = None,
+    offers: list[dict] | None = None,
 ) -> dict:
     """Roept de LLM-provider aan en geeft het gevalideerde plan-dict terug.
 
@@ -335,6 +347,11 @@ def generate_plan(
     else:
         macros = config.macros_for(mode)
         user_prompt = build_user_prompt(config, mode, macros, request)
+
+    if offers:
+        from sjef.planning.offers import prompt_block
+
+        user_prompt += prompt_block(offers)
 
     return validate_plan(
         llm.generate_json(
@@ -408,7 +425,11 @@ def _candidate_block(items_with_candidates: list[dict]) -> str:
 
 
 def choose_products(
-    items_with_candidates: list[dict], llm: LLM, *, cost_conscious: bool = False
+    items_with_candidates: list[dict],
+    llm: LLM,
+    *,
+    cost_conscious: bool = False,
+    offers: list[dict] | None = None,
 ) -> list[dict]:
     """Laat het taalmodel per item het beste product + aantal kiezen. Eén batch-call."""
     if not items_with_candidates:
@@ -442,5 +463,17 @@ def choose_products(
         "Kies per item (op index) het beste product en het aantal verpakkingen.\n\n"
         + _candidate_block(items_with_candidates)
     )
+    if offers:
+        import json
+
+        user += (
+            "\n\nAanbiedingen die bij het plannen goedkoper waren dan huismerk: "
+            + json.dumps(offers, ensure_ascii=False)
+            + "\nKies deze alleen als ze bij het item passen EN in diens kandidaten "
+            "staan. Vergelijk opnieuw de actuele kandidaatprijzen per kilo/liter/stuk "
+            "en de totale kosten voor de benodigde verpakkingen. Een even duur of "
+            "goedkoper passend huismerk gaat voor de aanbieding, ook bij een hogere "
+            "korting op de adviesprijs. Koop geen onnodig overschot."
+        )
     result = llm.generate_json(system=system, prompt=user, schema=CHOOSE_SCHEMA)
     return result["keuzes"]

@@ -3,7 +3,7 @@
 STEPS = (
     ("Verbinding met Picnic", "Picnic verbinden"),
     ("Weekmenu genereren", "Weekmenu samenstellen"),
-    ("Voedingswaarden ophalen", "Voedingswaarden en koolhydraten berekenen"),
+    ("Voedingswaarden ophalen", "Voedingswaarden berekenen"),
     ("Boodschappen zoeken", "Boodschappen zoeken"),
     ("Passende producten", "Producten en aantallen kiezen"),
     ("Budget controleren", "Budget controleren"),
